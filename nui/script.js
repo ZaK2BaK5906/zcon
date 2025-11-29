@@ -1,4 +1,7 @@
 $(document).ready(function() {
+    // Auto-detect protocol for NUI callbacks
+    const resourceName = 'zcon';
+
     let currentData = {
         stock: [],
         catalog: [],
@@ -50,7 +53,11 @@ $(document).ready(function() {
     // Close UI
     function closeUI() {
         $('#app').fadeOut(300);
-        $.post('https://zcon/closeUI', JSON.stringify({}));
+        fetch(`https://${resourceName}/closeUI`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
     }
 
     // Update society money display
@@ -205,12 +212,16 @@ $(document).ready(function() {
                 `Commander ${quantity}x ${name} pour $${formatNumber(totalPrice)}?`,
                 function(confirmed) {
                     if (confirmed) {
-                        $.post('https://zcon/placeOrder', JSON.stringify({
-                            model: model,
-                            name: name,
-                            quantity: quantity,
-                            totalPrice: totalPrice
-                        }));
+                        fetch(`https://${resourceName}/placeOrder`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                model: model,
+                                name: name,
+                                quantity: quantity,
+                                totalPrice: totalPrice
+                            })
+                        });
 
                         closeUI();
                     }
@@ -263,7 +274,11 @@ $(document).ready(function() {
             if (canStart) {
                 card.find('.item-btn').click(function() {
                     const orderId = $(this).data('order-id');
-                    $.post('https://zcon/startDelivery', JSON.stringify({ orderId: orderId }));
+                    fetch(`https://${resourceName}/startDelivery`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orderId: orderId })
+                    });
                     closeUI();
                 });
             }
@@ -350,7 +365,11 @@ $(document).ready(function() {
                 return;
             }
 
-            $.post('https://zcon/withdrawMoney', JSON.stringify({ amount: amount }));
+            fetch(`https://${resourceName}/withdrawMoney`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: amount })
+            });
         });
     });
 
@@ -361,7 +380,11 @@ $(document).ready(function() {
                 return;
             }
 
-            $.post('https://zcon/depositMoney', JSON.stringify({ amount: amount }));
+            fetch(`https://${resourceName}/depositMoney`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: amount })
+            });
         });
     });
 
