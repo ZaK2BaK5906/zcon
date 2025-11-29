@@ -20,14 +20,28 @@ end
 
 -- Send notification
 local function Notify(source, message, type)
-    if Config.UseOxLib then
-        TriggerClientEvent('ox_lib:notify', source, {
-            description = message,
-            type = type or 'info'
-        })
-    else
-        TriggerClientEvent('esx:showNotification', source, message)
-    end
+    TriggerClientEvent('zcon:notify', source, message, type)
+end
+
+-- Get society account
+local function GetSocietyAccount(cb)
+    MySQL.query('SELECT * FROM addon_account_data WHERE account_name = ?', {Config.SocietyName}, function(result)
+        if result and #result > 0 then
+            cb(result[1])
+        else
+            cb(nil)
+        end
+    end)
+end
+
+-- Add money to society
+local function AddSocietyMoney(amount)
+    MySQL.update('UPDATE addon_account_data SET money = money + ? WHERE account_name = ?', {amount, Config.SocietyName})
+end
+
+-- Remove money from society
+local function RemoveSocietyMoney(amount)
+    MySQL.update('UPDATE addon_account_data SET money = money - ? WHERE account_name = ?', {amount, Config.SocietyName})
 end
 
 -- Get stock
@@ -81,14 +95,14 @@ RegisterNetEvent('zcon:placeOrder', function(vehicleModel, vehicleName, quantity
     end
 
     -- Check society money
-    TriggerEvent('esx_addonaccount:getSharedAccount', Config.SocietyName, function(account)
+    GetSocietyAccount(function(account)
         if not account then
             Notify(source, 'Erreur: Compte société introuvable', 'error')
             return
         end
 
         if account.money < totalPrice then
-            Notify(source, 'Fonds insuffisants dans la société', 'error')
+            Notify(source, 'Fonds insuffisants dans la société ($' .. ESX.Math.GroupDigits(account.money) .. ' disponible)', 'error')
             return
         end
 
@@ -166,7 +180,7 @@ RegisterNetEvent('zcon:completeDelivery', function(orderId)
             local order = result[1]
 
             -- Deduct money from society
-            TriggerEvent('esx_addonaccount:getSharedAccount', Config.SocietyName, function(account)
+            GetSocietyAccount(function(account)
                 if not account then
                     Notify(source, 'Erreur: Compte société introuvable', 'error')
                     return
@@ -177,7 +191,7 @@ RegisterNetEvent('zcon:completeDelivery', function(orderId)
                     return
                 end
 
-                account.removeMoney(order.total_price)
+                RemoveSocietyMoney(order.total_price)
 
                 -- Add to stock or update existing
                 MySQL.query('SELECT * FROM concess_stock WHERE vehicle_model = ?', {order.vehicle_model}, function(stockResult)
@@ -244,7 +258,7 @@ ESX.RegisterServerCallback('zcon:getSocietyMoney', function(source, cb)
         return
     end
 
-    TriggerEvent('esx_addonaccount:getSharedAccount', Config.SocietyName, function(account)
+    GetSocietyAccount(function(account)
         if account then
             cb(account.money)
         else
@@ -262,23 +276,24 @@ RegisterNetEvent('zcon:withdrawMoney', function(amount)
         return
     end
 
-    if amount <= 0 then
+    amount = tonumber(amount)
+    if not amount or amount <= 0 then
         Notify(source, 'Montant invalide', 'error')
         return
     end
 
-    TriggerEvent('esx_addonaccount:getSharedAccount', Config.SocietyName, function(account)
+    GetSocietyAccount(function(account)
         if not account then
             Notify(source, 'Erreur: Compte société introuvable', 'error')
             return
         end
 
         if account.money < amount then
-            Notify(source, 'Fonds insuffisants', 'error')
+            Notify(source, 'Fonds insuffisants (Disponible: $' .. ESX.Math.GroupDigits(account.money) .. ')', 'error')
             return
         end
 
-        account.removeMoney(amount)
+        RemoveSocietyMoney(amount)
         xPlayer.addMoney(amount)
         Notify(source, string.format('Vous avez retiré $%s', ESX.Math.GroupDigits(amount)), 'success')
     end)
@@ -293,24 +308,25 @@ RegisterNetEvent('zcon:depositMoney', function(amount)
         return
     end
 
-    if amount <= 0 then
+    amount = tonumber(amount)
+    if not amount or amount <= 0 then
         Notify(source, 'Montant invalide', 'error')
         return
     end
 
     if xPlayer.getMoney() < amount then
-        Notify(source, 'Vous n\'avez pas assez d\'argent', 'error')
+        Notify(source, 'Vous n\'avez pas assez d\'argent (Disponible: $' .. ESX.Math.GroupDigits(xPlayer.getMoney()) .. ')', 'error')
         return
     end
 
-    TriggerEvent('esx_addonaccount:getSharedAccount', Config.SocietyName, function(account)
+    GetSocietyAccount(function(account)
         if not account then
             Notify(source, 'Erreur: Compte société introuvable', 'error')
             return
         end
 
         xPlayer.removeMoney(amount)
-        account.addMoney(amount)
+        AddSocietyMoney(amount)
         Notify(source, string.format('Vous avez déposé $%s', ESX.Math.GroupDigits(amount)), 'success')
     end)
 end)

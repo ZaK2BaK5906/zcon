@@ -7,13 +7,33 @@ local loadedVehicles = {}
 
 -- Notify function
 local function Notify(message, type)
-    if Config.UseOxLib then
-        lib.notify({
-            description = message,
-            type = type or 'info'
-        })
-    else
-        ESX.ShowNotification(message)
+    ESX.ShowNotification(message)
+end
+
+-- Simple progress bar
+local function ProgressBar(duration, label, onComplete)
+    local playerPed = PlayerPedId()
+
+    -- Load animation
+    RequestAnimDict(Config.LoadAnimation.dict)
+    while not HasAnimDictLoaded(Config.LoadAnimation.dict) do
+        Wait(10)
+    end
+
+    TaskPlayAnim(playerPed, Config.LoadAnimation.dict, Config.LoadAnimation.anim, 8.0, -8.0, -1, 1, 0, false, false, false)
+
+    -- Show notification
+    Notify(label, 'info')
+
+    -- Wait for duration
+    Wait(duration)
+
+    -- Stop animation
+    ClearPedTasks(playerPed)
+
+    -- Callback
+    if onComplete then
+        onComplete()
     end
 end
 
@@ -42,7 +62,7 @@ end
 -- Start delivery mission
 RegisterNetEvent('zcon:startDeliveryMission', function(order, deliveryLocation)
     if activeDelivery then
-        Notify('Vous avez déjà une livraison en cours', 'error')
+        Notify('Vous avez déjà une livraison en cours')
         return
     end
 
@@ -60,7 +80,7 @@ RegisterNetEvent('zcon:startDeliveryMission', function(order, deliveryLocation)
         'Point de livraison'
     )
 
-    Notify('Rendez-vous au point de livraison marqué sur votre GPS', 'info')
+    Notify('Rendez-vous au point de livraison marqué sur votre GPS')
 
     -- Start monitoring distance to pickup point
     CreateThread(function()
@@ -121,26 +141,12 @@ function LoadVehicles()
     local flatbed = GetVehiclePedIsIn(ped, false)
 
     if flatbed == 0 then
-        Notify('Vous devez être dans le flatbed', 'error')
+        Notify('Vous devez être dans le flatbed')
         return
     end
 
-    -- Animation
-    if lib.progressBar({
-        duration = Config.LoadAnimation.duration,
-        label = 'Chargement des véhicules...',
-        useWhileDead = false,
-        canCancel = true,
-        disable = {
-            car = true,
-            move = true,
-            combat = true
-        },
-        anim = {
-            dict = Config.LoadAnimation.dict,
-            clip = Config.LoadAnimation.anim
-        }
-    }) then
+    -- Progress bar
+    ProgressBar(Config.LoadAnimation.duration, 'Chargement des véhicules...', function()
         -- Spawn vehicles and attach to flatbed
         local order = activeDelivery.order
         local vehicleModel = order.vehicle_model
@@ -212,7 +218,7 @@ function LoadVehicles()
             'Zone de déchargement'
         )
 
-        Notify(string.format('%dx %s chargé(s)! Retournez à la concession', quantity, order.vehicle_name), 'success')
+        Notify(string.format('%dx %s chargé(s)! Retournez à la concession', quantity, order.vehicle_name))
 
         -- Monitor distance to unload point
         CreateThread(function()
@@ -229,34 +235,18 @@ function LoadVehicles()
                 Wait(1000)
             end
         end)
-    else
-        Notify('Chargement annulé', 'error')
-    end
+    end)
 end
 
 -- Unload vehicles
 function UnloadVehicles()
     if not activeDelivery or activeDelivery.stage ~= 'goto_unload' then
-        Notify('Aucune livraison en cours', 'error')
+        Notify('Aucune livraison en cours')
         return
     end
 
-    -- Animation
-    if lib.progressBar({
-        duration = Config.LoadAnimation.duration,
-        label = 'Déchargement des véhicules...',
-        useWhileDead = false,
-        canCancel = true,
-        disable = {
-            car = true,
-            move = true,
-            combat = true
-        },
-        anim = {
-            dict = Config.LoadAnimation.dict,
-            clip = Config.LoadAnimation.anim
-        }
-    }) then
+    -- Progress bar
+    ProgressBar(Config.LoadAnimation.duration, 'Déchargement des véhicules...', function()
         -- Delete loaded vehicles
         for _, vehicle in ipairs(loadedVehicles) do
             if DoesEntityExist(vehicle) then
@@ -275,10 +265,8 @@ function UnloadVehicles()
         isAtPickupPoint = false
         isAtUnloadPoint = false
 
-        Notify('Livraison terminée avec succès!', 'success')
-    else
-        Notify('Déchargement annulé', 'error')
-    end
+        Notify('Livraison terminée avec succès!')
+    end)
 end
 
 -- Cancel delivery on disconnect/job change
@@ -323,43 +311,3 @@ end)
 exports('UnloadVehicles', function()
     UnloadVehicles()
 end)
-
--- Draw markers for debug
-if Config.Zones.Office.debug or Config.Zones.Garage.debug or Config.Zones.Unload.debug then
-    CreateThread(function()
-        while true do
-            Wait(0)
-            local playerCoords = GetEntityCoords(PlayerPedId())
-
-            if Config.Zones.Office.debug then
-                local distance = #(playerCoords - Config.Zones.Office.coords)
-                if distance < 50.0 then
-                    DrawMarker(1, Config.Zones.Office.coords.x, Config.Zones.Office.coords.y, Config.Zones.Office.coords.z - 1.0,
-                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                        Config.Zones.Office.size.x, Config.Zones.Office.size.y, Config.Zones.Office.size.z,
-                        0, 255, 0, 100, false, true, 2, false, nil, nil, false)
-                end
-            end
-
-            if Config.Zones.Garage.debug then
-                local distance = #(playerCoords - Config.Zones.Garage.coords)
-                if distance < 50.0 then
-                    DrawMarker(1, Config.Zones.Garage.coords.x, Config.Zones.Garage.coords.y, Config.Zones.Garage.coords.z - 1.0,
-                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                        Config.Zones.Garage.size.x, Config.Zones.Garage.size.y, Config.Zones.Garage.size.z,
-                        255, 255, 0, 100, false, true, 2, false, nil, nil, false)
-                end
-            end
-
-            if Config.Zones.Unload.debug then
-                local distance = #(playerCoords - Config.Zones.Unload.coords)
-                if distance < 50.0 then
-                    DrawMarker(1, Config.Zones.Unload.coords.x, Config.Zones.Unload.coords.y, Config.Zones.Unload.coords.z - 1.0,
-                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                        Config.Zones.Unload.size.x, Config.Zones.Unload.size.y, Config.Zones.Unload.size.z,
-                        0, 0, 255, 100, false, true, 2, false, nil, nil, false)
-                end
-            end
-        end
-    end)
-end
