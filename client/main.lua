@@ -48,6 +48,16 @@ RegisterNetEvent('zcon:notify', function(message, type)
     ESX.ShowNotification(message)
 end)
 
+-- Update society money in NUI
+RegisterNetEvent('zcon:updateSocietyMoney', function(money)
+    if isUIOpen then
+        SendNUIMessage({
+            type = 'updateSocietyMoney',
+            money = money
+        })
+    end
+end)
+
 -- Refresh stock
 RegisterNetEvent('zcon:refreshStock', function()
     if isUIOpen then
@@ -106,6 +116,16 @@ function CloseUI()
         type = 'closeUI'
     })
 end
+
+-- Force close UI (safety measure)
+CreateThread(function()
+    while true do
+        Wait(1000)
+        if not HasJob() and isUIOpen then
+            CloseUI()
+        end
+    end
+end)
 
 -- NUI Callbacks
 RegisterNUICallback('closeUI', function(data, cb)

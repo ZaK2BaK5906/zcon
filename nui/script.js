@@ -200,16 +200,22 @@ $(document).ready(function() {
 
             const totalPrice = price * quantity;
 
-            if (confirm(`Commander ${quantity}x ${name} pour $${formatNumber(totalPrice)}?`)) {
-                $.post('http://zcon/placeOrder', JSON.stringify({
-                    model: model,
-                    name: name,
-                    quantity: quantity,
-                    totalPrice: totalPrice
-                }));
+            showConfirmModal(
+                'Confirmer la commande',
+                `Commander ${quantity}x ${name} pour $${formatNumber(totalPrice)}?`,
+                function(confirmed) {
+                    if (confirmed) {
+                        $.post('http://zcon/placeOrder', JSON.stringify({
+                            model: model,
+                            name: name,
+                            quantity: quantity,
+                            totalPrice: totalPrice
+                        }));
 
-                closeUI();
-            }
+                        closeUI();
+                    }
+                }
+            );
         });
     }
 
@@ -282,6 +288,27 @@ $(document).ready(function() {
         });
     }
 
+    // Show confirm modal
+    function showConfirmModal(title, description, callback) {
+        $('#confirmTitle').text(title);
+        $('#confirmDescription').text(description);
+        $('#confirmModal').fadeIn(200);
+
+        $('#confirmConfirm').off('click').on('click', function() {
+            $('#confirmModal').fadeOut(200);
+            if (callback) {
+                callback(true);
+            }
+        });
+
+        $('#confirmCancel, #confirmClose').off('click').on('click', function() {
+            $('#confirmModal').fadeOut(200);
+            if (callback) {
+                callback(false);
+            }
+        });
+    }
+
     // Format number with commas
     function formatNumber(num) {
         return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -346,7 +373,9 @@ $(document).ready(function() {
     // ESC key to close
     $(document).keyup(function(e) {
         if (e.key === "Escape") {
-            if ($('#inputModal').is(':visible')) {
+            if ($('#confirmModal').is(':visible')) {
+                $('#confirmModal').fadeOut(200);
+            } else if ($('#inputModal').is(':visible')) {
                 $('#inputModal').fadeOut(200);
             } else if ($('#app').is(':visible')) {
                 closeUI();

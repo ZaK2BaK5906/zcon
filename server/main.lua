@@ -35,13 +35,29 @@ local function GetSocietyAccount(cb)
 end
 
 -- Add money to society
-local function AddSocietyMoney(amount)
-    MySQL.update('UPDATE addon_account_data SET money = money + ? WHERE account_name = ?', {amount, Config.SocietyName})
+local function AddSocietyMoney(amount, cb)
+    MySQL.update('UPDATE addon_account_data SET money = money + ? WHERE account_name = ?', {amount, Config.SocietyName}, function(affectedRows)
+        if cb then cb(affectedRows > 0) end
+    end)
 end
 
 -- Remove money from society
-local function RemoveSocietyMoney(amount)
-    MySQL.update('UPDATE addon_account_data SET money = money - ? WHERE account_name = ?', {amount, Config.SocietyName})
+local function RemoveSocietyMoney(amount, cb)
+    MySQL.update('UPDATE addon_account_data SET money = money - ? WHERE account_name = ?', {amount, Config.SocietyName}, function(affectedRows)
+        if cb then cb(affectedRows > 0) end
+    end)
+end
+
+-- Update society money for all employees
+local function UpdateSocietyMoneyForAll()
+    GetSocietyAccount(function(account)
+        if account then
+            local employees = ESX.GetExtendedPlayers('job', Config.JobName)
+            for _, employee in pairs(employees) do
+                TriggerClientEvent('zcon:updateSocietyMoney', employee.source, account.money)
+            end
+        end
+    end)
 end
 
 -- Get stock
@@ -293,9 +309,15 @@ RegisterNetEvent('zcon:withdrawMoney', function(amount)
             return
         end
 
-        RemoveSocietyMoney(amount)
-        xPlayer.addMoney(amount)
-        Notify(source, string.format('Vous avez retiré $%s', ESX.Math.GroupDigits(amount)), 'success')
+        RemoveSocietyMoney(amount, function(success)
+            if success then
+                xPlayer.addMoney(amount)
+                Notify(source, string.format('Vous avez retiré $%s', ESX.Math.GroupDigits(amount)), 'success')
+                UpdateSocietyMoneyForAll()
+            else
+                Notify(source, 'Erreur lors du retrait', 'error')
+            end
+        end)
     end)
 end)
 
@@ -326,8 +348,14 @@ RegisterNetEvent('zcon:depositMoney', function(amount)
         end
 
         xPlayer.removeMoney(amount)
-        AddSocietyMoney(amount)
-        Notify(source, string.format('Vous avez déposé $%s', ESX.Math.GroupDigits(amount)), 'success')
+        AddSocietyMoney(amount, function(success)
+            if success then
+                Notify(source, string.format('Vous avez déposé $%s', ESX.Math.GroupDigits(amount)), 'success')
+                UpdateSocietyMoneyForAll()
+            else
+                Notify(source, 'Erreur lors du dépôt', 'error')
+            end
+        end)
     end)
 end)
 
