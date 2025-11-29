@@ -20,7 +20,11 @@ end
 
 -- Send notification
 local function Notify(source, message, type)
-    TriggerClientEvent('zcon:notify', source, message, type)
+    TriggerClientEvent('ox_lib:notify', source, {
+        title = type == 'error' and 'Erreur' or type == 'success' and 'Succès' or 'Info',
+        description = message,
+        type = type or 'info'
+    })
 end
 
 -- Get society account

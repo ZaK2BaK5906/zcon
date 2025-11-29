@@ -1,8 +1,5 @@
 ESX = exports['es_extended']:getSharedObject()
 local PlayerData = {}
-local currentStock = {}
-local currentOrders = {}
-local isUIOpen = false
 
 -- Get player data
 CreateThread(function()
@@ -20,9 +17,6 @@ end)
 RegisterNetEvent('esx:setJob')
 AddEventHandler('esx:setJob', function(job)
     PlayerData.job = job
-    if isUIOpen then
-        CloseUI()
-    end
 end)
 
 -- Check if player has concess job
@@ -43,115 +37,333 @@ local function IsBoss()
     return GetGrade() >= Config.BossGrade
 end
 
--- Notify function
-RegisterNetEvent('zcon:notify', function(message, type)
-    ESX.ShowNotification(message)
-end)
-
--- Update society money in NUI
-RegisterNetEvent('zcon:updateSocietyMoney', function(money)
-    if isUIOpen then
-        SendNUIMessage({
-            type = 'updateSocietyMoney',
-            money = money
-        })
-    end
-end)
-
--- Refresh stock
-RegisterNetEvent('zcon:refreshStock', function()
-    if isUIOpen then
-        ESX.TriggerServerCallback('zcon:getStock', function(stock)
-            currentStock = stock
-        end)
-    end
-end)
-
--- Refresh orders
-RegisterNetEvent('zcon:refreshOrders', function()
-    if isUIOpen then
-        ESX.TriggerServerCallback('zcon:getOrders', function(orders)
-            currentOrders = orders
-        end)
-    end
-end)
-
--- Open UI
-function OpenUI()
+-- Main Menu
+function OpenMainMenu()
     if not HasJob() then
-        ESX.ShowNotification('Vous n\'êtes pas employé de la concession')
+        lib.notify({
+            title = 'Erreur',
+            description = 'Vous n\'êtes pas employé de la concession',
+            type = 'error'
+        })
         return
     end
 
-    -- Get all data
+    local options = {
+        {
+            title = '📊 Gestion Stock',
+            description = 'Voir le stock des véhicules',
+            icon = 'warehouse',
+            onSelect = function()
+                OpenStockMenu()
+            end
+        },
+        {
+            title = '🛒 Passer Commande',
+            description = 'Commander nouveaux véhicules',
+            icon = 'shopping-cart',
+            onSelect = function()
+                OpenCatalogMenu()
+            end
+        },
+        {
+            title = '📦 Commandes en cours',
+            description = 'Gérer les livraisons',
+            icon = 'boxes-stacked',
+            onSelect = function()
+                OpenOrdersMenu()
+            end
+        }
+    }
+
+    -- Boss menu
+    if IsBoss() then
+        table.insert(options, {
+            title = '💰 Menu Patron',
+            description = 'Gestion de la société',
+            icon = 'briefcase',
+            onSelect = function()
+                OpenBossMenu()
+            end
+        })
+    end
+
+    lib.registerContext({
+        id = 'concess_main',
+        title = '🏢 Concessionnaire',
+        options = options
+    })
+
+    lib.showContext('concess_main')
+end
+
+-- Stock Menu
+function OpenStockMenu()
     ESX.TriggerServerCallback('zcon:getStock', function(stock)
-        ESX.TriggerServerCallback('zcon:getCatalog', function(catalog)
-            ESX.TriggerServerCallback('zcon:getOrders', function(orders)
-                ESX.TriggerServerCallback('zcon:getSocietyMoney', function(societyMoney)
-                    currentStock = stock
-                    currentOrders = orders
+        if not stock or #stock == 0 then
+            lib.notify({
+                title = 'Stock',
+                description = 'Aucun véhicule en stock',
+                type = 'info'
+            })
+            return
+        end
 
-                    SetNuiFocus(true, true)
-                    isUIOpen = true
+        local options = {}
+        for _, vehicle in ipairs(stock) do
+            table.insert(options, {
+                title = vehicle.vehicle_name,
+                description = string.format('Stock: %d | Achat: $%s | Vente: $%s',
+                    vehicle.quantity,
+                    ESX.Math.GroupDigits(vehicle.buy_price),
+                    ESX.Math.GroupDigits(vehicle.sell_price)
+                ),
+                icon = 'car'
+            })
+        end
 
-                    SendNUIMessage({
-                        type = 'openUI',
-                        stock = stock,
-                        catalog = catalog,
-                        orders = orders,
-                        societyMoney = societyMoney,
-                        isBoss = IsBoss()
-                    })
-                end)
-            end)
-        end)
+        lib.registerContext({
+            id = 'concess_stock',
+            title = '📊 Stock de véhicules',
+            menu = 'concess_main',
+            options = options
+        })
+
+        lib.showContext('concess_stock')
     end)
 end
 
--- Close UI
-function CloseUI()
-    SetNuiFocus(false, false)
-    isUIOpen = false
-    SendNUIMessage({
-        type = 'closeUI'
-    })
+-- Catalog Menu
+function OpenCatalogMenu()
+    ESX.TriggerServerCallback('zcon:getCatalog', function(catalog)
+        if not catalog or #catalog == 0 then
+            lib.notify({
+                title = 'Catalogue',
+                description = 'Catalogue indisponible',
+                type = 'error'
+            })
+            return
+        end
+
+        local options = {}
+        for _, category in ipairs(catalog) do
+            table.insert(options, {
+                title = category.category,
+                description = string.format('%d véhicules disponibles', #category.vehicles),
+                icon = 'folder',
+                arrow = true,
+                onSelect = function()
+                    OpenCategoryMenu(category)
+                end
+            })
+        end
+
+        lib.registerContext({
+            id = 'concess_catalog',
+            title = '🛒 Catalogue',
+            menu = 'concess_main',
+            options = options
+        })
+
+        lib.showContext('concess_catalog')
+    end)
 end
 
--- Force close UI (safety measure)
-CreateThread(function()
-    while true do
-        Wait(1000)
-        if not HasJob() and isUIOpen then
-            CloseUI()
+-- Category Menu
+function OpenCategoryMenu(category)
+    local options = {}
+    for _, vehicle in ipairs(category.vehicles) do
+        table.insert(options, {
+            title = vehicle.name,
+            description = string.format('Prix: $%s', ESX.Math.GroupDigits(vehicle.price)),
+            icon = 'car',
+            onSelect = function()
+                OrderVehicle(vehicle, category)
+            end
+        })
+    end
+
+    lib.registerContext({
+        id = 'concess_category',
+        title = '📁 ' .. category.category,
+        menu = 'concess_catalog',
+        options = options
+    })
+
+    lib.showContext('concess_category')
+end
+
+-- Order Vehicle
+function OrderVehicle(vehicle, category)
+    local input = lib.inputDialog('Commander ' .. vehicle.name, {
+        {
+            type = 'number',
+            label = 'Quantité',
+            description = 'Nombre de véhicules (1-10)',
+            required = true,
+            min = 1,
+            max = 10,
+            default = 1
+        }
+    })
+
+    if not input then
+        OpenCategoryMenu(category)
+        return
+    end
+
+    local quantity = tonumber(input[1])
+    if not quantity or quantity < 1 or quantity > 10 then
+        lib.notify({
+            title = 'Erreur',
+            description = 'Quantité invalide',
+            type = 'error'
+        })
+        OpenCategoryMenu(category)
+        return
+    end
+
+    local totalPrice = vehicle.price * quantity
+
+    local alert = lib.alertDialog({
+        header = 'Confirmer la commande',
+        content = string.format('Véhicule: %s\nQuantité: %d\nPrix total: $%s',
+            vehicle.name,
+            quantity,
+            ESX.Math.GroupDigits(totalPrice)
+        ),
+        centered = true,
+        cancel = true
+    })
+
+    if alert == 'confirm' then
+        TriggerServerEvent('zcon:placeOrder', vehicle.model, vehicle.name, quantity, totalPrice)
+    end
+
+    OpenCategoryMenu(category)
+end
+
+-- Orders Menu
+function OpenOrdersMenu()
+    ESX.TriggerServerCallback('zcon:getOrders', function(orders)
+        if not orders or #orders == 0 then
+            lib.notify({
+                title = 'Commandes',
+                description = 'Aucune commande en cours',
+                type = 'info'
+            })
+            return
+        end
+
+        local options = {}
+        for _, order in ipairs(orders) do
+            local statusText = order.status == 'pending' and '⏳ En attente' or '🚚 En livraison'
+            local canStart = order.status == 'pending'
+
+            table.insert(options, {
+                title = string.format('%dx %s', order.quantity, order.vehicle_name),
+                description = string.format('%s | Prix: $%s', statusText, ESX.Math.GroupDigits(order.total_price)),
+                icon = 'truck',
+                disabled = not canStart,
+                onSelect = function()
+                    if canStart then
+                        TriggerServerEvent('zcon:startDelivery', order.id)
+                    end
+                end
+            })
+        end
+
+        lib.registerContext({
+            id = 'concess_orders',
+            title = '📦 Commandes actives',
+            menu = 'concess_main',
+            options = options
+        })
+
+        lib.showContext('concess_orders')
+    end)
+end
+
+-- Boss Menu
+function OpenBossMenu()
+    ESX.TriggerServerCallback('zcon:getSocietyMoney', function(money)
+        local options = {
+            {
+                title = '💵 Solde de la société',
+                description = string.format('$%s', ESX.Math.GroupDigits(money)),
+                icon = 'money-bill',
+                disabled = true
+            },
+            {
+                title = '📤 Retirer argent',
+                description = 'Retirer de l\'argent de la société',
+                icon = 'hand-holding-dollar',
+                onSelect = function()
+                    WithdrawMoney(money)
+                end
+            },
+            {
+                title = '📥 Déposer argent',
+                description = 'Déposer de l\'argent dans la société',
+                icon = 'piggy-bank',
+                onSelect = function()
+                    DepositMoney()
+                end
+            }
+        }
+
+        lib.registerContext({
+            id = 'concess_boss',
+            title = '💰 Menu Patron',
+            menu = 'concess_main',
+            options = options
+        })
+
+        lib.showContext('concess_boss')
+    end)
+end
+
+-- Withdraw Money
+function WithdrawMoney(societyMoney)
+    local input = lib.inputDialog('Retirer argent', {
+        {
+            type = 'number',
+            label = 'Montant',
+            description = string.format('Disponible: $%s', ESX.Math.GroupDigits(societyMoney)),
+            required = true,
+            min = 1
+        }
+    })
+
+    if input then
+        local amount = tonumber(input[1])
+        if amount and amount > 0 then
+            TriggerServerEvent('zcon:withdrawMoney', amount)
         end
     end
-end)
 
--- NUI Callbacks
-RegisterNUICallback('closeUI', function(data, cb)
-    CloseUI()
-    cb('ok')
-end)
+    OpenBossMenu()
+end
 
-RegisterNUICallback('placeOrder', function(data, cb)
-    TriggerServerEvent('zcon:placeOrder', data.model, data.name, data.quantity, data.totalPrice)
-    cb('ok')
-end)
+-- Deposit Money
+function DepositMoney()
+    local input = lib.inputDialog('Déposer argent', {
+        {
+            type = 'number',
+            label = 'Montant',
+            required = true,
+            min = 1
+        }
+    })
 
-RegisterNUICallback('startDelivery', function(data, cb)
-    TriggerServerEvent('zcon:startDelivery', data.orderId)
-    cb('ok')
-end)
+    if input then
+        local amount = tonumber(input[1])
+        if amount and amount > 0 then
+            TriggerServerEvent('zcon:depositMoney', amount)
+        end
+    end
 
-RegisterNUICallback('withdrawMoney', function(data, cb)
-    TriggerServerEvent('zcon:withdrawMoney', data.amount)
-    cb('ok')
-end)
-
-RegisterNUICallback('depositMoney', function(data, cb)
-    TriggerServerEvent('zcon:depositMoney', data.amount)
-    cb('ok')
-end)
+    OpenBossMenu()
+end
 
 -- Spawn service vehicle
 RegisterNetEvent('zcon:spawnServiceVehicle', function()
@@ -165,20 +377,23 @@ RegisterNetEvent('zcon:spawnServiceVehicle', function()
                 SetVehicleLivery(vehicle, Config.ServiceVehicle.livery)
             end
 
-            ESX.ShowNotification('Véhicule de service sorti')
+            lib.notify({
+                title = 'Garage',
+                description = 'Véhicule de service sorti',
+                type = 'success'
+            })
         else
-            ESX.ShowNotification('Erreur lors du spawn du véhicule')
+            lib.notify({
+                title = 'Erreur',
+                description = 'Erreur lors du spawn du véhicule',
+                type = 'error'
+            })
         end
     end)
 end)
 
 -- Setup ox_target zones
 CreateThread(function()
-    -- Wait for ox_target to be loaded
-    while not exports.ox_target do
-        Wait(100)
-    end
-
     -- Office/Tablet zone
     exports.ox_target:addBoxZone({
         coords = Config.Zones.Office.coords,
@@ -192,7 +407,7 @@ CreateThread(function()
                 label = Config.Zones.Office.label,
                 groups = Config.JobName,
                 onSelect = function()
-                    OpenUI()
+                    OpenMainMenu()
                 end
             }
         }
@@ -239,43 +454,3 @@ CreateThread(function()
         }
     })
 end)
-
--- Draw markers for debug
-if Config.Zones.Office.debug or Config.Zones.Garage.debug or Config.Zones.Unload.debug then
-    CreateThread(function()
-        while true do
-            Wait(0)
-            local playerCoords = GetEntityCoords(PlayerPedId())
-
-            if Config.Zones.Office.debug then
-                local distance = #(playerCoords - Config.Zones.Office.coords)
-                if distance < 50.0 then
-                    DrawMarker(1, Config.Zones.Office.coords.x, Config.Zones.Office.coords.y, Config.Zones.Office.coords.z - 1.0,
-                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                        Config.Zones.Office.size.x, Config.Zones.Office.size.y, Config.Zones.Office.size.z,
-                        0, 255, 0, 100, false, true, 2, false, nil, nil, false)
-                end
-            end
-
-            if Config.Zones.Garage.debug then
-                local distance = #(playerCoords - Config.Zones.Garage.coords)
-                if distance < 50.0 then
-                    DrawMarker(1, Config.Zones.Garage.coords.x, Config.Zones.Garage.coords.y, Config.Zones.Garage.coords.z - 1.0,
-                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                        Config.Zones.Garage.size.x, Config.Zones.Garage.size.y, Config.Zones.Garage.size.z,
-                        255, 255, 0, 100, false, true, 2, false, nil, nil, false)
-                end
-            end
-
-            if Config.Zones.Unload.debug then
-                local distance = #(playerCoords - Config.Zones.Unload.coords)
-                if distance < 50.0 then
-                    DrawMarker(1, Config.Zones.Unload.coords.x, Config.Zones.Unload.coords.y, Config.Zones.Unload.coords.z - 1.0,
-                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                        Config.Zones.Unload.size.x, Config.Zones.Unload.size.y, Config.Zones.Unload.size.z,
-                        0, 0, 255, 100, false, true, 2, false, nil, nil, false)
-                end
-            end
-        end
-    end)
-end

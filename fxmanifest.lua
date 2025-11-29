@@ -2,11 +2,12 @@ fx_version 'cerulean'
 game 'gta5'
 
 author 'ZaK2BaK5906'
-description 'ESX Concess Job - Vehicle Dealership with Delivery System & NUI'
-version '2.0.0'
+description 'ESX Concess Job - Vehicle Dealership with Delivery System'
+version '2.1.0'
 
 shared_scripts {
     '@es_extended/imports.lua',
+    '@ox_lib/init.lua',
     'config.lua'
 }
 
@@ -20,18 +21,11 @@ client_scripts {
     'client/delivery.lua'
 }
 
-ui_page 'nui/index.html'
-
-files {
-    'nui/index.html',
-    'nui/style.css',
-    'nui/script.js'
-}
-
 lua54 'yes'
 
 dependencies {
     'es_extended',
+    'ox_lib',
     'ox_target',
     'oxmysql'
 }
