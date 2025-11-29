@@ -50,7 +50,7 @@ $(document).ready(function() {
     // Close UI
     function closeUI() {
         $('#app').fadeOut(300);
-        $.post('https://zcon/closeUI', JSON.stringify({}));
+        $.post('http://zcon/closeUI', JSON.stringify({}));
     }
 
     // Update society money display
@@ -201,7 +201,7 @@ $(document).ready(function() {
             const totalPrice = price * quantity;
 
             if (confirm(`Commander ${quantity}x ${name} pour $${formatNumber(totalPrice)}?`)) {
-                $.post('https://zcon/placeOrder', JSON.stringify({
+                $.post('http://zcon/placeOrder', JSON.stringify({
                     model: model,
                     name: name,
                     quantity: quantity,
@@ -257,7 +257,7 @@ $(document).ready(function() {
             if (canStart) {
                 card.find('.item-btn').click(function() {
                     const orderId = $(this).data('order-id');
-                    $.post('https://zcon/startDelivery', JSON.stringify({ orderId: orderId }));
+                    $.post('http://zcon/startDelivery', JSON.stringify({ orderId: orderId }));
                     closeUI();
                 });
             }
@@ -323,7 +323,7 @@ $(document).ready(function() {
                 return;
             }
 
-            $.post('https://zcon/withdrawMoney', JSON.stringify({ amount: amount }));
+            $.post('http://zcon/withdrawMoney', JSON.stringify({ amount: amount }));
         });
     });
 
@@ -334,7 +334,7 @@ $(document).ready(function() {
                 return;
             }
 
-            $.post('https://zcon/depositMoney', JSON.stringify({ amount: amount }));
+            $.post('http://zcon/depositMoney', JSON.stringify({ amount: amount }));
         });
     });
 
