@@ -40,3 +40,13 @@ ON DUPLICATE KEY UPDATE
     `name` = VALUES(`name`),
     `label` = VALUES(`label`),
     `salary` = VALUES(`salary`);
+
+-- Add society account
+INSERT INTO `addon_account` (`name`, `label`, `shared`) VALUES
+('society_concess', 'Concessionnaire', 1)
+ON DUPLICATE KEY UPDATE `label` = 'Concessionnaire', `shared` = 1;
+
+-- Initialize society account data (starting balance: 0)
+INSERT INTO `addon_account_data` (`account_name`, `money`, `owner`) VALUES
+('society_concess', 0, NULL)
+ON DUPLICATE KEY UPDATE `account_name` = 'society_concess';
