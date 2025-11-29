@@ -1,0 +1,365 @@
+local activeDelivery = nil
+local deliveryBlip = nil
+local deliveryVehicles = {}
+local isAtPickupPoint = false
+local isAtUnloadPoint = false
+local loadedVehicles = {}
+
+-- Notify function
+local function Notify(message, type)
+    if Config.UseOxLib then
+        lib.notify({
+            description = message,
+            type = type or 'info'
+        })
+    else
+        ESX.ShowNotification(message)
+    end
+end
+
+-- Create blip
+local function CreateDeliveryBlip(coords, sprite, color, text)
+    local blip = AddBlipForCoord(coords.x, coords.y, coords.z)
+    SetBlipSprite(blip, sprite)
+    SetBlipColour(blip, color)
+    SetBlipScale(blip, 0.8)
+    SetBlipAsShortRange(blip, false)
+    BeginTextCommandSetBlipName('STRING')
+    AddTextComponentString(text)
+    EndTextCommandSetBlipName(blip)
+    SetBlipRoute(blip, true)
+    return blip
+end
+
+-- Remove blip
+local function RemoveDeliveryBlip()
+    if deliveryBlip then
+        RemoveBlip(deliveryBlip)
+        deliveryBlip = nil
+    end
+end
+
+-- Start delivery mission
+RegisterNetEvent('zcon:startDeliveryMission', function(order, deliveryLocation)
+    if activeDelivery then
+        Notify('Vous avez déjà une livraison en cours', 'error')
+        return
+    end
+
+    activeDelivery = {
+        order = order,
+        location = deliveryLocation,
+        stage = 'goto_pickup'  -- Stages: goto_pickup, load, goto_unload, unload
+    }
+
+    -- Create blip for pickup location
+    deliveryBlip = CreateDeliveryBlip(
+        vector3(deliveryLocation.x, deliveryLocation.y, deliveryLocation.z),
+        67, -- Delivery truck icon
+        5,  -- Yellow
+        'Point de livraison'
+    )
+
+    Notify('Rendez-vous au point de livraison marqué sur votre GPS', 'info')
+
+    -- Start monitoring distance to pickup point
+    CreateThread(function()
+        while activeDelivery and activeDelivery.stage == 'goto_pickup' do
+            local playerCoords = GetEntityCoords(PlayerPedId())
+            local distance = #(playerCoords - vector3(deliveryLocation.x, deliveryLocation.y, deliveryLocation.z))
+
+            if distance < 50.0 and not isAtPickupPoint then
+                isAtPickupPoint = true
+                SetupPickupZone()
+            elseif distance >= 50.0 and isAtPickupPoint then
+                isAtPickupPoint = false
+            end
+
+            Wait(1000)
+        end
+    end)
+end)
+
+-- Setup pickup zone with ox_target
+function SetupPickupZone()
+    if not activeDelivery or activeDelivery.stage ~= 'goto_pickup' then return end
+
+    local location = activeDelivery.location
+
+    -- Add temporary target zone
+    exports.ox_target:addBoxZone({
+        coords = vector3(location.x, location.y, location.z),
+        size = vector3(5.0, 5.0, 3.0),
+        rotation = location.w,
+        debug = false,
+        options = {
+            {
+                name = 'concess_pickup',
+                icon = 'fa-solid fa-truck-loading',
+                label = string.format('Charger les véhicules (%dx %s)', activeDelivery.order.quantity, activeDelivery.order.vehicle_name),
+                canInteract = function()
+                    local ped = PlayerPedId()
+                    local vehicle = GetVehiclePedIsIn(ped, false)
+                    if vehicle == 0 then return false end
+
+                    local model = GetEntityModel(vehicle)
+                    return model == GetHashKey(Config.ServiceVehicle.model)
+                end,
+                onSelect = function()
+                    LoadVehicles()
+                end
+            }
+        }
+    })
+end
+
+-- Load vehicles onto flatbed
+function LoadVehicles()
+    if not activeDelivery or activeDelivery.stage ~= 'goto_pickup' then return end
+
+    local ped = PlayerPedId()
+    local flatbed = GetVehiclePedIsIn(ped, false)
+
+    if flatbed == 0 then
+        Notify('Vous devez être dans le flatbed', 'error')
+        return
+    end
+
+    -- Animation
+    if lib.progressBar({
+        duration = Config.LoadAnimation.duration,
+        label = 'Chargement des véhicules...',
+        useWhileDead = false,
+        canCancel = true,
+        disable = {
+            car = true,
+            move = true,
+            combat = true
+        },
+        anim = {
+            dict = Config.LoadAnimation.dict,
+            clip = Config.LoadAnimation.anim
+        }
+    }) then
+        -- Spawn vehicles and attach to flatbed
+        local order = activeDelivery.order
+        local vehicleModel = order.vehicle_model
+        local quantity = order.quantity
+
+        -- Request model
+        local modelHash = GetHashKey(vehicleModel)
+        RequestModel(modelHash)
+        while not HasModelLoaded(modelHash) do
+            Wait(100)
+        end
+
+        -- Get flatbed position
+        local flatbedCoords = GetEntityCoords(flatbed)
+        local flatbedHeading = GetEntityHeading(flatbed)
+
+        -- Calculate positions for multiple vehicles (stack them)
+        local offsets = {
+            {x = 0.0, y = -2.0, z = 1.2},
+            {x = 0.0, y = 0.5, z = 1.2},
+            {x = 0.0, y = 3.0, z = 1.2},
+            {x = 0.0, y = -2.0, z = 2.8},
+            {x = 0.0, y = 0.5, z = 2.8},
+            {x = 0.0, y = 3.0, z = 2.8},
+            {x = 0.0, y = -2.0, z = 4.4},
+            {x = 0.0, y = 0.5, z = 4.4},
+            {x = 0.0, y = 3.0, z = 4.4},
+            {x = 0.0, y = -2.0, z = 6.0}
+        }
+
+        for i = 1, math.min(quantity, 10) do
+            local offset = offsets[i] or offsets[1]
+
+            -- Create vehicle
+            local vehicle = CreateVehicle(modelHash, flatbedCoords.x, flatbedCoords.y, flatbedCoords.z, flatbedHeading, true, false)
+
+            if DoesEntityExist(vehicle) then
+                SetEntityAsMissionEntity(vehicle, true, true)
+                SetVehicleDoorsLocked(vehicle, 2)
+                SetEntityInvincible(vehicle, true)
+                FreezeEntityPosition(vehicle, true)
+
+                -- Attach to flatbed
+                AttachEntityToEntity(
+                    vehicle,
+                    flatbed,
+                    0,
+                    offset.x, offset.y, offset.z,
+                    0.0, 0.0, 0.0,
+                    false, false, false, false, 0, true
+                )
+
+                table.insert(loadedVehicles, vehicle)
+            end
+        end
+
+        SetModelAsNoLongerNeeded(modelHash)
+
+        -- Update delivery stage
+        activeDelivery.stage = 'goto_unload'
+        RemoveDeliveryBlip()
+
+        -- Create blip for unload zone
+        local unloadCoords = Config.Zones.Unload.coords
+        deliveryBlip = CreateDeliveryBlip(
+            unloadCoords,
+            50, -- Garage icon
+            2,  -- Green
+            'Zone de déchargement'
+        )
+
+        Notify(string.format('%dx %s chargé(s)! Retournez à la concession', quantity, order.vehicle_name), 'success')
+
+        -- Monitor distance to unload point
+        CreateThread(function()
+            while activeDelivery and activeDelivery.stage == 'goto_unload' do
+                local playerCoords = GetEntityCoords(PlayerPedId())
+                local distance = #(playerCoords - unloadCoords)
+
+                if distance < 10.0 and not isAtUnloadPoint then
+                    isAtUnloadPoint = true
+                elseif distance >= 10.0 and isAtUnloadPoint then
+                    isAtUnloadPoint = false
+                end
+
+                Wait(1000)
+            end
+        end)
+    else
+        Notify('Chargement annulé', 'error')
+    end
+end
+
+-- Unload vehicles
+function UnloadVehicles()
+    if not activeDelivery or activeDelivery.stage ~= 'goto_unload' then
+        Notify('Aucune livraison en cours', 'error')
+        return
+    end
+
+    -- Animation
+    if lib.progressBar({
+        duration = Config.LoadAnimation.duration,
+        label = 'Déchargement des véhicules...',
+        useWhileDead = false,
+        canCancel = true,
+        disable = {
+            car = true,
+            move = true,
+            combat = true
+        },
+        anim = {
+            dict = Config.LoadAnimation.dict,
+            clip = Config.LoadAnimation.anim
+        }
+    }) then
+        -- Delete loaded vehicles
+        for _, vehicle in ipairs(loadedVehicles) do
+            if DoesEntityExist(vehicle) then
+                DetachEntity(vehicle, true, true)
+                DeleteEntity(vehicle)
+            end
+        end
+        loadedVehicles = {}
+
+        -- Complete delivery on server
+        TriggerServerEvent('zcon:completeDelivery', activeDelivery.order.id)
+
+        -- Clean up
+        RemoveDeliveryBlip()
+        activeDelivery = nil
+        isAtPickupPoint = false
+        isAtUnloadPoint = false
+
+        Notify('Livraison terminée avec succès!', 'success')
+    else
+        Notify('Déchargement annulé', 'error')
+    end
+end
+
+-- Cancel delivery on disconnect/job change
+AddEventHandler('onResourceStop', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then return end
+
+    if activeDelivery then
+        TriggerServerEvent('zcon:cancelDelivery', activeDelivery.order.id)
+        CleanupDelivery()
+    end
+end)
+
+RegisterNetEvent('esx:setJob', function(job)
+    if job.name ~= Config.JobName and activeDelivery then
+        TriggerServerEvent('zcon:cancelDelivery', activeDelivery.order.id)
+        CleanupDelivery()
+    end
+end)
+
+-- Cleanup delivery
+function CleanupDelivery()
+    -- Delete loaded vehicles
+    for _, vehicle in ipairs(loadedVehicles) do
+        if DoesEntityExist(vehicle) then
+            DetachEntity(vehicle, true, true)
+            DeleteEntity(vehicle)
+        end
+    end
+    loadedVehicles = {}
+
+    RemoveDeliveryBlip()
+    activeDelivery = nil
+    isAtPickupPoint = false
+    isAtUnloadPoint = false
+end
+
+-- Exports for ox_target
+exports('HasActiveDelivery', function()
+    return activeDelivery ~= nil and activeDelivery.stage == 'goto_unload'
+end)
+
+exports('UnloadVehicles', function()
+    UnloadVehicles()
+end)
+
+-- Draw markers for debug
+if Config.Zones.Office.debug or Config.Zones.Garage.debug or Config.Zones.Unload.debug then
+    CreateThread(function()
+        while true do
+            Wait(0)
+            local playerCoords = GetEntityCoords(PlayerPedId())
+
+            if Config.Zones.Office.debug then
+                local distance = #(playerCoords - Config.Zones.Office.coords)
+                if distance < 50.0 then
+                    DrawMarker(1, Config.Zones.Office.coords.x, Config.Zones.Office.coords.y, Config.Zones.Office.coords.z - 1.0,
+                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                        Config.Zones.Office.size.x, Config.Zones.Office.size.y, Config.Zones.Office.size.z,
+                        0, 255, 0, 100, false, true, 2, false, nil, nil, false)
+                end
+            end
+
+            if Config.Zones.Garage.debug then
+                local distance = #(playerCoords - Config.Zones.Garage.coords)
+                if distance < 50.0 then
+                    DrawMarker(1, Config.Zones.Garage.coords.x, Config.Zones.Garage.coords.y, Config.Zones.Garage.coords.z - 1.0,
+                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                        Config.Zones.Garage.size.x, Config.Zones.Garage.size.y, Config.Zones.Garage.size.z,
+                        255, 255, 0, 100, false, true, 2, false, nil, nil, false)
+                end
+            end
+
+            if Config.Zones.Unload.debug then
+                local distance = #(playerCoords - Config.Zones.Unload.coords)
+                if distance < 50.0 then
+                    DrawMarker(1, Config.Zones.Unload.coords.x, Config.Zones.Unload.coords.y, Config.Zones.Unload.coords.z - 1.0,
+                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                        Config.Zones.Unload.size.x, Config.Zones.Unload.size.y, Config.Zones.Unload.size.z,
+                        0, 0, 255, 100, false, true, 2, false, nil, nil, false)
+                end
+            end
+        end
+    end)
+end
