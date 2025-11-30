@@ -376,4 +376,108 @@ RegisterNetEvent('zcon:getServiceVehicle', function()
     TriggerClientEvent('zcon:spawnServiceVehicle', source)
 end)
 
+-- Sell vehicle to player
+RegisterNetEvent('zcon:sellVehicle', function(targetId, vehicleModel, vehicleName, price, paymentMethod)
+    local source = source
+    local xPlayer = ESX.GetPlayerFromId(source)
+    local xTarget = ESX.GetPlayerFromId(targetId)
+
+    -- Validation
+    if not xPlayer or xPlayer.job.name ~= Config.JobName then
+        Notify(source, 'Vous n\'avez pas accès à cette action', 'error')
+        return
+    end
+
+    if not xTarget then
+        Notify(source, 'Joueur introuvable', 'error')
+        return
+    end
+
+    price = tonumber(price)
+    if not price or price <= 0 then
+        Notify(source, 'Prix invalide', 'error')
+        return
+    end
+
+    if paymentMethod ~= 'bank' and paymentMethod ~= 'cash' then
+        Notify(source, 'Méthode de paiement invalide', 'error')
+        return
+    end
+
+    -- Check stock
+    MySQL.query('SELECT * FROM concess_stock WHERE vehicle_model = ?', {vehicleModel}, function(result)
+        if not result or #result == 0 or result[1].quantity <= 0 then
+            Notify(source, 'Véhicule non disponible en stock', 'error')
+            return
+        end
+
+        -- Check buyer has enough money
+        local buyerMoney = paymentMethod == 'bank' and xTarget.getAccount('bank').money or xTarget.getMoney()
+
+        if buyerMoney < price then
+            Notify(source, string.format('Le joueur n\'a pas assez d\'argent (%s: $%s)',
+                paymentMethod == 'bank' and 'Banque' or 'Liquide',
+                ESX.Math.GroupDigits(buyerMoney)), 'error')
+            Notify(targetId, 'Vous n\'avez pas assez d\'argent pour acheter ce véhicule', 'error')
+            return
+        end
+
+        -- Process payment
+        if paymentMethod == 'bank' then
+            xTarget.removeAccountMoney('bank', price)
+        else
+            xTarget.removeMoney(price)
+        end
+
+        -- Add money to society
+        AddSocietyMoney(price, function(success)
+            if not success then
+                -- Refund buyer if society payment fails
+                if paymentMethod == 'bank' then
+                    xTarget.addAccountMoney('bank', price)
+                else
+                    xTarget.addMoney(price)
+                end
+                Notify(source, 'Erreur lors de l\'ajout de l\'argent à la société', 'error')
+                return
+            end
+
+            -- Update stock
+            MySQL.update('UPDATE concess_stock SET quantity = quantity - 1 WHERE vehicle_model = ?', {vehicleModel}, function(affectedRows)
+                if affectedRows > 0 then
+                    -- Spawn vehicle for buyer
+                    TriggerClientEvent('zcon:spawnPurchasedVehicle', targetId, vehicleModel, vehicleName, price)
+
+                    -- Notifications
+                    Notify(source, string.format('Véhicule vendu à %s pour $%s', xTarget.getName(), ESX.Math.GroupDigits(price)), 'success')
+                    Notify(targetId, string.format('Vous avez acheté un %s pour $%s (%s)',
+                        vehicleName,
+                        ESX.Math.GroupDigits(price),
+                        paymentMethod == 'bank' and 'Banque' or 'Liquide'), 'success')
+
+                    -- Update society money for all employees
+                    UpdateSocietyMoneyForAll()
+
+                    -- Log
+                    print(string.format('[ZCon] %s sold %s to %s for $%s (%s)',
+                        xPlayer.getName(),
+                        vehicleName,
+                        xTarget.getName(),
+                        price,
+                        paymentMethod))
+                else
+                    -- Refund if stock update fails
+                    if paymentMethod == 'bank' then
+                        xTarget.addAccountMoney('bank', price)
+                    else
+                        xTarget.addMoney(price)
+                    end
+                    RemoveSocietyMoney(price)
+                    Notify(source, 'Erreur lors de la mise à jour du stock', 'error')
+                end
+            end)
+        end)
+    end)
+end)
+
 print('^2[ZCon]^7 Concess job loaded successfully')

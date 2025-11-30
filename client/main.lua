@@ -72,6 +72,14 @@ function OpenMainMenu()
             onSelect = function()
                 OpenOrdersMenu()
             end
+        },
+        {
+            title = '💸 Vendre Véhicule',
+            description = 'Vendre un véhicule à un joueur',
+            icon = 'hand-holding-dollar',
+            onSelect = function()
+                OpenSellVehicleMenu()
+            end
         }
     }
 
@@ -365,6 +373,122 @@ function DepositMoney()
     OpenBossMenu()
 end
 
+-- Sell Vehicle Menu
+function OpenSellVehicleMenu()
+    ESX.TriggerServerCallback('zcon:getStock', function(stock)
+        if not stock or #stock == 0 then
+            lib.notify({
+                title = 'Erreur',
+                description = 'Aucun véhicule en stock',
+                type = 'error'
+            })
+            return
+        end
+
+        local options = {}
+        for _, item in ipairs(stock) do
+            if item.quantity > 0 then
+                table.insert(options, {
+                    title = item.vehicle_name,
+                    description = string.format('Stock: %d | Prix achat: $%s', item.quantity, ESX.Math.GroupDigits(item.price)),
+                    icon = 'car',
+                    onSelect = function()
+                        SellVehicleToPlayer(item)
+                    end
+                })
+            end
+        end
+
+        if #options == 0 then
+            lib.notify({
+                title = 'Erreur',
+                description = 'Aucun véhicule disponible en stock',
+                type = 'error'
+            })
+            return
+        end
+
+        lib.registerContext({
+            id = 'concess_sell',
+            title = '💸 Vendre Véhicule',
+            menu = 'concess_main',
+            options = options
+        })
+
+        lib.showContext('concess_sell')
+    end)
+end
+
+-- Sell Vehicle to Player
+function SellVehicleToPlayer(vehicle)
+    -- Step 1: Get player ID
+    local input = lib.inputDialog('Vendre ' .. vehicle.vehicle_name, {
+        {
+            type = 'number',
+            label = 'ID du joueur',
+            description = 'Entrez l\'ID du joueur acheteur',
+            required = true,
+            min = 1
+        },
+        {
+            type = 'number',
+            label = 'Prix de vente',
+            description = string.format('Prix conseillé: $%s', ESX.Math.GroupDigits(math.floor(vehicle.price * Config.SellPriceMultiplier))),
+            required = true,
+            min = 1
+        }
+    })
+
+    if not input then
+        OpenSellVehicleMenu()
+        return
+    end
+
+    local targetId = tonumber(input[1])
+    local price = tonumber(input[2])
+
+    if not targetId or not price or targetId < 1 or price < 1 then
+        lib.notify({
+            title = 'Erreur',
+            description = 'Informations invalides',
+            type = 'error'
+        })
+        OpenSellVehicleMenu()
+        return
+    end
+
+    -- Step 2: Choose payment method
+    local paymentOptions = {
+        {
+            title = '💳 Paiement Banque',
+            description = string.format('Le joueur paiera $%s par carte bancaire', ESX.Math.GroupDigits(price)),
+            icon = 'credit-card',
+            onSelect = function()
+                TriggerServerEvent('zcon:sellVehicle', targetId, vehicle.vehicle_model, vehicle.vehicle_name, price, 'bank')
+                OpenMainMenu()
+            end
+        },
+        {
+            title = '💵 Paiement Liquide',
+            description = string.format('Le joueur paiera $%s en espèces', ESX.Math.GroupDigits(price)),
+            icon = 'money-bill',
+            onSelect = function()
+                TriggerServerEvent('zcon:sellVehicle', targetId, vehicle.vehicle_model, vehicle.vehicle_name, price, 'cash')
+                OpenMainMenu()
+            end
+        }
+    }
+
+    lib.registerContext({
+        id = 'concess_payment',
+        title = '💸 Méthode de paiement',
+        menu = 'concess_sell',
+        options = paymentOptions
+    })
+
+    lib.showContext('concess_payment')
+end
+
 -- Spawn service vehicle
 RegisterNetEvent('zcon:spawnServiceVehicle', function()
     local spawnPoint = Config.Zones.Garage.spawnPoint
@@ -381,6 +505,51 @@ RegisterNetEvent('zcon:spawnServiceVehicle', function()
                 title = 'Garage',
                 description = 'Véhicule de service sorti',
                 type = 'success'
+            })
+        else
+            lib.notify({
+                title = 'Erreur',
+                description = 'Erreur lors du spawn du véhicule',
+                type = 'error'
+            })
+        end
+    end)
+end)
+
+-- Spawn purchased vehicle and give keys
+RegisterNetEvent('zcon:spawnPurchasedVehicle', function(vehicleModel, vehicleName, price)
+    local playerPed = PlayerPedId()
+    local coords = GetEntityCoords(playerPed)
+    local heading = GetEntityHeading(playerPed)
+
+    -- Spawn vehicle in front of player
+    local forwardVector = GetEntityForwardVector(playerPed)
+    local spawnCoords = vector3(
+        coords.x + forwardVector.x * 3.0,
+        coords.y + forwardVector.y * 3.0,
+        coords.z
+    )
+
+    ESX.Game.SpawnVehicle(vehicleModel, spawnCoords, heading, function(vehicle)
+        if DoesEntityExist(vehicle) then
+            -- Get plate and model for keys
+            local plate = GetVehicleNumberPlateText(vehicle)
+            local model = GetDisplayNameFromVehicleModel(GetEntityModel(vehicle))
+
+            -- Give keys using qs-vehiclekeys
+            if GetResourceState('qs-vehiclekeys') == 'started' then
+                exports['qs-vehiclekeys']:GiveKeys(plate, model, true)
+                print(string.format('[ZCon] Keys given for vehicle %s (plate: %s)', model, plate))
+            else
+                print('[ZCon] Warning: qs-vehiclekeys not found, keys not given')
+            end
+
+            -- Notification
+            lib.notify({
+                title = 'Achat réussi',
+                description = string.format('Votre %s a été livré! Les clés vous ont été données.', vehicleName),
+                type = 'success',
+                duration = 7000
             })
         else
             lib.notify({
@@ -453,4 +622,16 @@ CreateThread(function()
             }
         }
     })
+
+    -- Create map blip
+    if Config.Blip.enabled then
+        local blip = AddBlipForCoord(Config.Blip.coords.x, Config.Blip.coords.y, Config.Blip.coords.z)
+        SetBlipSprite(blip, Config.Blip.sprite)
+        SetBlipColour(blip, Config.Blip.color)
+        SetBlipScale(blip, Config.Blip.scale)
+        SetBlipAsShortRange(blip, true)
+        BeginTextCommandSetBlipName('STRING')
+        AddTextComponentString(Config.Blip.label)
+        EndTextCommandSetBlipName(blip)
+    end
 end)

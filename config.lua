@@ -223,3 +223,13 @@ Config.SellPriceMultiplier = 1.2
 
 -- Notification settings
 Config.UseOxLib = true  -- Set to false to use ESX notifications
+
+-- Map blip settings
+Config.Blip = {
+    enabled = true,
+    coords = vector3(-33.81, -1102.57, 26.42),  -- Same as office location
+    sprite = 326,  -- Car dealership icon
+    color = 3,     -- Blue
+    scale = 0.8,
+    label = 'Concess Auto'
+}
