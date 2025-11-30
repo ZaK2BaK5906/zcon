@@ -1,5 +1,9 @@
 ESX = exports['es_extended']:getSharedObject()
 local PlayerData = {}
+local currentMission = nil
+local npcPed = nil
+local missionBlip = nil
+local missionVehicleBlip = nil
 
 -- Get player data
 CreateThread(function()
@@ -19,273 +23,311 @@ AddEventHandler('esx:setJob', function(job)
     PlayerData.job = job
 end)
 
--- Check if player has concess job (global function)
+-- Check if player has taxi job
 function HasJob()
     return PlayerData.job and PlayerData.job.name == Config.JobName
 end
 
--- Get player grade
-function GetGrade()
-    if HasJob() then
-        return PlayerData.job.grade
-    end
-    return -1
-end
-
 -- Check if player is boss
 function IsBoss()
-    return GetGrade() >= Config.BossGrade
+    return PlayerData.job and PlayerData.job.name == Config.JobName and PlayerData.job.grade >= Config.BossGrade
 end
 
--- Main Menu
-function OpenMainMenu()
+-- F6 Key mapping for job menu
+RegisterCommand('+taxijobmenu', function()
+    if HasJob() then
+        OpenJobMenu()
+    end
+end, false)
+
+RegisterKeyMapping('+taxijobmenu', 'Ouvrir le menu Taxi (F6)', 'keyboard', 'F6')
+
+-- Open main job menu
+function OpenJobMenu()
     if not HasJob() then
         lib.notify({
             title = 'Erreur',
-            description = 'Vous n\'êtes pas employé de la concession',
+            description = 'Vous n\'êtes pas chauffeur de taxi',
             type = 'error'
         })
         return
     end
 
-    local options = {
-        {
-            title = '📊 Gestion Stock',
-            description = 'Voir le stock des véhicules',
-            icon = 'warehouse',
-            onSelect = function()
-                OpenStockMenu()
-            end
-        },
-        {
-            title = '🛒 Passer Commande',
-            description = 'Commander nouveaux véhicules',
-            icon = 'shopping-cart',
-            onSelect = function()
-                OpenCatalogMenu()
-            end
-        },
-        {
-            title = '📦 Commandes en cours',
-            description = 'Gérer les livraisons',
-            icon = 'boxes-stacked',
-            onSelect = function()
-                OpenOrdersMenu()
-            end
-        },
-        {
-            title = '💸 Vendre Véhicule',
-            description = 'Vendre un véhicule à un joueur',
-            icon = 'hand-holding-dollar',
-            onSelect = function()
-                OpenSellVehicleMenu()
-            end
-        },
-        {
-            title = '🏢 Gestion Showroom',
-            description = 'Gérer les véhicules d\'exposition',
-            icon = 'warehouse',
-            onSelect = function()
-                OpenShowroomMenu()
-            end
-        }
-    }
-
-    lib.registerContext({
-        id = 'concess_main',
-        title = '🏢 Concessionnaire',
-        options = options
-    })
-
-    lib.showContext('concess_main')
-end
-
--- Stock Menu
-function OpenStockMenu()
-    ESX.TriggerServerCallback('zcon:getStock', function(stock)
-        if not stock or #stock == 0 then
-            lib.notify({
-                title = 'Stock',
-                description = 'Aucun véhicule en stock',
-                type = 'info'
-            })
-            return
-        end
-
-        local options = {}
-        for _, vehicle in ipairs(stock) do
-            table.insert(options, {
-                title = vehicle.vehicle_name,
-                description = string.format('Stock: %d | Achat: $%s | Vente: $%s',
-                    vehicle.quantity,
-                    ESX.Math.GroupDigits(vehicle.buy_price),
-                    ESX.Math.GroupDigits(vehicle.sell_price)
-                ),
-                icon = 'car'
-            })
-        end
-
-        lib.registerContext({
-            id = 'concess_stock',
-            title = '📊 Stock de véhicules',
-            menu = 'concess_main',
-            options = options
-        })
-
-        lib.showContext('concess_stock')
-    end)
-end
-
--- Catalog Menu
-function OpenCatalogMenu()
-    ESX.TriggerServerCallback('zcon:getCatalog', function(catalog)
-        if not catalog or #catalog == 0 then
-            lib.notify({
-                title = 'Catalogue',
-                description = 'Catalogue indisponible',
-                type = 'error'
-            })
-            return
-        end
-
-        local options = {}
-        for _, category in ipairs(catalog) do
-            table.insert(options, {
-                title = category.category,
-                description = string.format('%d véhicules disponibles', #category.vehicles),
-                icon = 'folder',
-                arrow = true,
-                onSelect = function()
-                    OpenCategoryMenu(category)
-                end
-            })
-        end
-
-        lib.registerContext({
-            id = 'concess_catalog',
-            title = '🛒 Catalogue',
-            menu = 'concess_main',
-            options = options
-        })
-
-        lib.showContext('concess_catalog')
-    end)
-end
-
--- Category Menu
-function OpenCategoryMenu(category)
     local options = {}
-    for _, vehicle in ipairs(category.vehicles) do
+
+    -- NPC Missions
+    if not currentMission then
         table.insert(options, {
-            title = vehicle.name,
-            description = string.format('Prix: $%s', ESX.Math.GroupDigits(vehicle.price)),
-            icon = 'car',
+            title = '🚕 Démarrer une Mission',
+            description = 'Prendre un client NPC',
+            icon = 'taxi',
             onSelect = function()
-                OrderVehicle(vehicle, category)
+                OpenMissionMenu()
+            end
+        })
+    else
+        table.insert(options, {
+            title = '❌ Annuler la Mission',
+            description = 'Annuler la mission en cours',
+            icon = 'xmark',
+            onSelect = function()
+                CancelMission()
+            end
+        })
+    end
+
+    -- Billing
+    table.insert(options, {
+        title = '💵 Facturer un Client',
+        description = 'Envoyer une facture à un joueur',
+        icon = 'receipt',
+        onSelect = function()
+            OpenBillingMenu()
+        end
+    })
+
+    lib.registerContext({
+        id = 'taxi_job_menu',
+        title = '🚕 Menu Taxi',
+        options = options
+    })
+
+    lib.showContext('taxi_job_menu')
+end
+
+-- Open mission selection menu
+function OpenMissionMenu()
+    local options = {}
+
+    for i, mission in ipairs(Config.NPCMissions) do
+        table.insert(options, {
+            title = mission.name,
+            description = string.format('Prix: $%s', ESX.Math.GroupDigits(mission.price)),
+            icon = 'location-dot',
+            onSelect = function()
+                StartMission(mission)
             end
         })
     end
 
     lib.registerContext({
-        id = 'concess_category',
-        title = '📁 ' .. category.category,
-        menu = 'concess_catalog',
+        id = 'taxi_missions',
+        title = '🚕 Choisir une Mission',
+        menu = 'taxi_job_menu',
         options = options
     })
 
-    lib.showContext('concess_category')
+    lib.showContext('taxi_missions')
 end
 
--- Order Vehicle
-function OrderVehicle(vehicle, category)
-    local input = lib.inputDialog('Commander ' .. vehicle.name, {
-        {
-            type = 'number',
-            label = 'Quantité',
-            description = 'Nombre de véhicules (1-10)',
-            required = true,
-            min = 1,
-            max = 10,
-            default = 1
-        }
-    })
-
-    if not input then
-        OpenCategoryMenu(category)
-        return
-    end
-
-    local quantity = tonumber(input[1])
-    if not quantity or quantity < 1 or quantity > 10 then
+-- Start NPC mission
+function StartMission(mission)
+    if currentMission then
         lib.notify({
             title = 'Erreur',
-            description = 'Quantité invalide',
+            description = 'Vous avez déjà une mission en cours',
             type = 'error'
         })
-        OpenCategoryMenu(category)
         return
     end
 
-    local totalPrice = vehicle.price * quantity
+    currentMission = {
+        name = mission.name,
+        pickup = mission.pickup,
+        dropoff = mission.dropoff,
+        price = mission.price,
+        stage = 'goto_pickup'
+    }
 
-    local alert = lib.alertDialog({
-        header = 'Confirmer la commande',
-        content = string.format('Véhicule: %s\nQuantité: %d\nPrix total: $%s',
-            vehicle.name,
-            quantity,
-            ESX.Math.GroupDigits(totalPrice)
-        ),
-        centered = true,
-        cancel = true
+    -- Create blip for pickup
+    missionBlip = AddBlipForCoord(mission.pickup.x, mission.pickup.y, mission.pickup.z)
+    SetBlipSprite(missionBlip, 280)
+    SetBlipColour(missionBlip, 5)
+    SetBlipRoute(missionBlip, true)
+    BeginTextCommandSetBlipName('STRING')
+    AddTextComponentString('Client à récupérer')
+    EndTextCommandSetBlipName(missionBlip)
+
+    lib.notify({
+        title = 'Mission',
+        description = 'Rendez-vous au point de prise en charge',
+        type = 'info'
     })
 
-    if alert == 'confirm' then
-        TriggerServerEvent('zcon:placeOrder', vehicle.model, vehicle.name, quantity, totalPrice)
-    end
-
-    OpenCategoryMenu(category)
+    -- Monitor pickup
+    MonitorMission()
 end
 
--- Orders Menu
-function OpenOrdersMenu()
-    ESX.TriggerServerCallback('zcon:getOrders', function(orders)
-        if not orders or #orders == 0 then
-            lib.notify({
-                title = 'Commandes',
-                description = 'Aucune commande en cours',
-                type = 'info'
-            })
-            return
-        end
+-- Monitor mission progress
+function MonitorMission()
+    CreateThread(function()
+        while currentMission do
+            local playerPed = PlayerPedId()
+            local playerCoords = GetEntityCoords(playerPed)
+            local vehicle = GetVehiclePedIsIn(playerPed, false)
 
-        local options = {}
-        for _, order in ipairs(orders) do
-            local statusText = order.status == 'pending' and '⏳ En attente' or '🚚 En livraison'
-            local canStart = order.status == 'pending'
+            if currentMission.stage == 'goto_pickup' then
+                local pickupCoords = vector3(currentMission.pickup.x, currentMission.pickup.y, currentMission.pickup.z)
+                local distance = #(playerCoords - pickupCoords)
 
-            table.insert(options, {
-                title = string.format('%dx %s', order.quantity, order.vehicle_name),
-                description = string.format('%s | Prix: $%s', statusText, ESX.Math.GroupDigits(order.total_price)),
-                icon = 'truck',
-                disabled = not canStart,
-                onSelect = function()
-                    if canStart then
-                        TriggerServerEvent('zcon:startDelivery', order.id)
+                if distance < 30.0 and vehicle ~= 0 then
+                    -- Spawn NPC at pickup
+                    if not npcPed or not DoesEntityExist(npcPed) then
+                        SpawnNPC(currentMission.pickup)
+                    end
+
+                    if distance < 10.0 then
+                        -- NPC enters vehicle
+                        if npcPed and DoesEntityExist(npcPed) then
+                            TaskEnterVehicle(npcPed, vehicle, -1, 1, 1.0, 1, 0)
+                            Wait(3000)
+
+                            if IsPedInVehicle(npcPed, vehicle, false) then
+                                currentMission.stage = 'goto_dropoff'
+                                RemoveBlip(missionBlip)
+
+                                -- Create blip for dropoff
+                                missionBlip = AddBlipForCoord(currentMission.dropoff.x, currentMission.dropoff.y, currentMission.dropoff.z)
+                                SetBlipSprite(missionBlip, 1)
+                                SetBlipColour(missionBlip, 2)
+                                SetBlipRoute(missionBlip, true)
+                                BeginTextCommandSetBlipName('STRING')
+                                AddTextComponentString('Destination')
+                                EndTextCommandSetBlipName(missionBlip)
+
+                                lib.notify({
+                                    title = 'Mission',
+                                    description = 'Client à bord! Direction la destination',
+                                    type = 'success'
+                                })
+                            end
+                        end
                     end
                 end
-            })
+            elseif currentMission.stage == 'goto_dropoff' then
+                local dropoffCoords = vector3(currentMission.dropoff.x, currentMission.dropoff.y, currentMission.dropoff.z)
+                local distance = #(playerCoords - dropoffCoords)
+
+                if distance < 20.0 then
+                    if npcPed and DoesEntityExist(npcPed) and IsPedInVehicle(npcPed, vehicle, false) then
+                        TaskLeaveVehicle(npcPed, vehicle, 0)
+                        Wait(2000)
+                        DeleteEntity(npcPed)
+                        npcPed = nil
+
+                        -- Complete mission
+                        TriggerServerEvent('ztaxi:completeMission', currentMission.price)
+                        RemoveBlip(missionBlip)
+
+                        currentMission = nil
+                    end
+                end
+            end
+
+            Wait(500)
         end
-
-        lib.registerContext({
-            id = 'concess_orders',
-            title = '📦 Commandes actives',
-            menu = 'concess_main',
-            options = options
-        })
-
-        lib.showContext('concess_orders')
     end)
 end
+
+-- Spawn NPC
+function SpawnNPC(coords)
+    local modelHash = GetHashKey('a_m_m_business_01')
+    RequestModel(modelHash)
+    while not HasModelLoaded(modelHash) do
+        Wait(10)
+    end
+
+    npcPed = CreatePed(4, modelHash, coords.x, coords.y, coords.z, coords.w, false, true)
+    SetEntityAsMissionEntity(npcPed, true, true)
+    SetBlockingOfNonTemporaryEvents(npcPed, true)
+    FreezeEntityPosition(npcPed, false)
+
+    SetModelAsNoLongerNeeded(modelHash)
+end
+
+-- Cancel mission
+function CancelMission()
+    if currentMission then
+        if npcPed and DoesEntityExist(npcPed) then
+            DeleteEntity(npcPed)
+        end
+        if missionBlip then
+            RemoveBlip(missionBlip)
+        end
+        currentMission = nil
+        npcPed = nil
+        missionBlip = nil
+
+        lib.notify({
+            title = 'Mission',
+            description = 'Mission annulée',
+            type = 'error'
+        })
+    end
+end
+
+-- Open billing menu
+function OpenBillingMenu()
+    local input = lib.inputDialog('Facturer un client', {
+        {
+            type = 'number',
+            label = 'ID du joueur',
+            description = 'ID du client à facturer',
+            required = true,
+            min = 1
+        },
+        {
+            type = 'number',
+            label = 'Montant',
+            description = 'Montant de la facture',
+            required = true,
+            min = 1
+        }
+    })
+
+    if input then
+        local targetId = tonumber(input[1])
+        local amount = tonumber(input[2])
+
+        if targetId and amount and targetId > 0 and amount > 0 then
+            TriggerServerEvent('ztaxi:sendBill', targetId, amount)
+        end
+    end
+end
+
+-- Receive bill from taxi driver
+RegisterNetEvent('ztaxi:receiveBill', function(taxiDriverSource, driverName, amount)
+    lib.registerContext({
+        id = 'taxi_bill_received',
+        title = '💵 Facture Taxi',
+        options = {
+            {
+                title = string.format('Facture de %s', driverName),
+                description = string.format('Montant: $%s', ESX.Math.GroupDigits(amount)),
+                icon = 'info',
+                disabled = true
+            },
+            {
+                title = '✅ Accepter',
+                description = 'Payer la facture',
+                icon = 'check',
+                onSelect = function()
+                    TriggerServerEvent('ztaxi:processBillPayment', taxiDriverSource, amount, true)
+                end
+            },
+            {
+                title = '❌ Refuser',
+                description = 'Refuser la facture',
+                icon = 'xmark',
+                onSelect = function()
+                    TriggerServerEvent('ztaxi:processBillPayment', taxiDriverSource, amount, false)
+                end
+            }
+        }
+    })
+
+    lib.showContext('taxi_bill_received')
+end)
 
 -- Boss Menu
 function OpenBossMenu()
@@ -298,7 +340,7 @@ function OpenBossMenu()
         return
     end
 
-    ESX.TriggerServerCallback('zcon:getSocietyMoney', function(money)
+    ESX.TriggerServerCallback('ztaxi:getSocietyMoney', function(money)
         local options = {
             {
                 title = '💵 Solde de la société',
@@ -333,16 +375,16 @@ function OpenBossMenu()
         }
 
         lib.registerContext({
-            id = 'concess_boss',
-            title = '💰 Menu Patron',
+            id = 'taxi_boss',
+            title = '💰 Menu Patron Taxi',
             options = options
         })
 
-        lib.showContext('concess_boss')
+        lib.showContext('taxi_boss')
     end)
 end
 
--- Withdraw Money
+-- Withdraw money
 function WithdrawMoney(societyMoney)
     local input = lib.inputDialog('Retirer argent', {
         {
@@ -357,14 +399,14 @@ function WithdrawMoney(societyMoney)
     if input then
         local amount = tonumber(input[1])
         if amount and amount > 0 then
-            TriggerServerEvent('zcon:withdrawMoney', amount)
+            TriggerServerEvent('ztaxi:withdrawMoney', amount)
         end
     end
 
     OpenBossMenu()
 end
 
--- Deposit Money
+-- Deposit money
 function DepositMoney()
     local input = lib.inputDialog('Déposer argent', {
         {
@@ -378,14 +420,14 @@ function DepositMoney()
     if input then
         local amount = tonumber(input[1])
         if amount and amount > 0 then
-            TriggerServerEvent('zcon:depositMoney', amount)
+            TriggerServerEvent('ztaxi:depositMoney', amount)
         end
     end
 
     OpenBossMenu()
 end
 
--- Recruit Employee
+-- Recruit employee
 function RecruitEmployee()
     local input = lib.inputDialog('Recruter un employé', {
         {
@@ -401,7 +443,7 @@ function RecruitEmployee()
             description = 'Choisir le grade de l\'employé',
             required = true,
             options = {
-                {value = 0, label = 'Employé'},
+                {value = 0, label = 'Chauffeur'},
                 {value = 1, label = 'Gérant'},
                 {value = 2, label = 'Boss'}
             },
@@ -414,237 +456,25 @@ function RecruitEmployee()
         local grade = tonumber(input[2])
 
         if targetId and grade then
-            TriggerServerEvent('zcon:recruitEmployee', targetId, grade)
+            TriggerServerEvent('ztaxi:recruitEmployee', targetId, grade)
         end
     end
 
     OpenBossMenu()
 end
 
--- Sell Vehicle Menu
-function OpenSellVehicleMenu()
-    ESX.TriggerServerCallback('zcon:getStock', function(stock)
-        if not stock or #stock == 0 then
-            lib.notify({
-                title = 'Erreur',
-                description = 'Aucun véhicule en stock',
-                type = 'error'
-            })
-            return
-        end
-
-        local options = {}
-        for _, item in ipairs(stock) do
-            if item.quantity and item.quantity > 0 then
-                local price = item.price or 0
-                table.insert(options, {
-                    title = item.vehicle_name or 'Véhicule',
-                    description = string.format('Stock: %d | Prix achat: $%s', item.quantity, ESX.Math.GroupDigits(price)),
-                    icon = 'car',
-                    onSelect = function()
-                        SellVehicleToPlayer(item)
-                    end
-                })
-            end
-        end
-
-        if #options == 0 then
-            lib.notify({
-                title = 'Erreur',
-                description = 'Aucun véhicule disponible en stock',
-                type = 'error'
-            })
-            return
-        end
-
-        lib.registerContext({
-            id = 'concess_sell',
-            title = '💸 Vendre Véhicule',
-            menu = 'concess_main',
-            options = options
-        })
-
-        lib.showContext('concess_sell')
-    end)
-end
-
--- Sell Vehicle to Player
-function SellVehicleToPlayer(vehicle)
-    local vehiclePrice = vehicle.price or 0
-    local suggestedPrice = math.floor(vehiclePrice * Config.SellPriceMultiplier)
-
-    -- Step 1: Get player ID
-    local input = lib.inputDialog('Vendre ' .. (vehicle.vehicle_name or 'Véhicule'), {
-        {
-            type = 'number',
-            label = 'ID du joueur',
-            description = 'Entrez l\'ID du joueur acheteur',
-            required = true,
-            min = 1
-        },
-        {
-            type = 'number',
-            label = 'Prix de vente',
-            description = string.format('Prix conseillé: $%s', ESX.Math.GroupDigits(suggestedPrice)),
-            required = true,
-            min = 1
-        }
-    })
-
-    if not input then
-        OpenSellVehicleMenu()
-        return
-    end
-
-    local targetId = tonumber(input[1])
-    local price = tonumber(input[2])
-
-    if not targetId or not price or targetId < 1 or price < 1 then
-        lib.notify({
-            title = 'Erreur',
-            description = 'Informations invalides',
-            type = 'error'
-        })
-        OpenSellVehicleMenu()
-        return
-    end
-
-    -- Step 2: Choose payment method
-    local paymentOptions = {
-        {
-            title = '💳 Paiement Banque',
-            description = string.format('Le joueur paiera $%s par carte bancaire', ESX.Math.GroupDigits(price)),
-            icon = 'credit-card',
-            onSelect = function()
-                TriggerServerEvent('zcon:sellVehicle', targetId, vehicle.vehicle_model, vehicle.vehicle_name, price, 'bank')
-                OpenMainMenu()
-            end
-        },
-        {
-            title = '💵 Paiement Liquide',
-            description = string.format('Le joueur paiera $%s en espèces', ESX.Math.GroupDigits(price)),
-            icon = 'money-bill',
-            onSelect = function()
-                TriggerServerEvent('zcon:sellVehicle', targetId, vehicle.vehicle_model, vehicle.vehicle_name, price, 'cash')
-                OpenMainMenu()
-            end
-        }
-    }
-
-    lib.registerContext({
-        id = 'concess_payment',
-        title = '💸 Méthode de paiement',
-        menu = 'concess_sell',
-        options = paymentOptions
-    })
-
-    lib.showContext('concess_payment')
-end
-
--- Spawn service vehicle
-RegisterNetEvent('zcon:spawnServiceVehicle', function()
-    local spawnPoint = Config.Zones.Garage.spawnPoint
-
-    ESX.Game.SpawnVehicle(Config.ServiceVehicle.model, vector3(spawnPoint.x, spawnPoint.y, spawnPoint.z), spawnPoint.w, function(vehicle)
-        if DoesEntityExist(vehicle) then
-            TaskWarpPedIntoVehicle(PlayerPedId(), vehicle, -1)
-
-            if Config.ServiceVehicle.livery then
-                SetVehicleLivery(vehicle, Config.ServiceVehicle.livery)
-            end
-
-            lib.notify({
-                title = 'Garage',
-                description = 'Véhicule de service sorti',
-                type = 'success'
-            })
-        else
-            lib.notify({
-                title = 'Erreur',
-                description = 'Erreur lors du spawn du véhicule',
-                type = 'error'
-            })
-        end
-    end)
-end)
-
--- Spawn purchased vehicle and give keys
-RegisterNetEvent('zcon:spawnPurchasedVehicle', function(vehicleModel, vehicleName, price)
-    local playerPed = PlayerPedId()
-    local coords = GetEntityCoords(playerPed)
-    local heading = GetEntityHeading(playerPed)
-
-    -- Spawn vehicle in front of player
-    local forwardVector = GetEntityForwardVector(playerPed)
-    local spawnCoords = vector3(
-        coords.x + forwardVector.x * 3.0,
-        coords.y + forwardVector.y * 3.0,
-        coords.z
-    )
-
-    ESX.Game.SpawnVehicle(vehicleModel, spawnCoords, heading, function(vehicle)
-        if DoesEntityExist(vehicle) then
-            -- Get plate and model for keys
-            local plate = GetVehicleNumberPlateText(vehicle)
-            local model = GetDisplayNameFromVehicleModel(GetEntityModel(vehicle))
-
-            -- Give keys using qs-vehiclekeys
-            if GetResourceState('qs-vehiclekeys') == 'started' then
-                exports['qs-vehiclekeys']:GiveKeys(plate, model, true)
-                print(string.format('[ZCon] Keys given for vehicle %s (plate: %s)', model, plate))
-            else
-                print('[ZCon] Warning: qs-vehiclekeys not found, keys not given')
-            end
-
-            -- Notification
-            lib.notify({
-                title = 'Achat réussi',
-                description = string.format('Votre %s a été livré! Les clés vous ont été données.', vehicleName),
-                type = 'success',
-                duration = 7000
-            })
-        else
-            lib.notify({
-                title = 'Erreur',
-                description = 'Erreur lors du spawn du véhicule',
-                type = 'error'
-            })
-        end
-    end)
-end)
-
--- Setup ox_target zones
+-- Setup boss menu zone
 CreateThread(function()
-    -- Office/Tablet zone
     exports.ox_target:addBoxZone({
-        coords = Config.Zones.Office.coords,
-        size = Config.Zones.Office.size,
-        rotation = Config.Zones.Office.rotation,
-        debug = Config.Zones.Office.debug,
+        coords = Config.BossMenuZone.coords,
+        size = Config.BossMenuZone.size,
+        rotation = Config.BossMenuZone.rotation,
+        debug = Config.BossMenuZone.debug,
         options = {
             {
-                name = 'concess_office',
-                icon = Config.Zones.Office.icon,
-                label = Config.Zones.Office.label,
-                groups = Config.JobName,
-                onSelect = function()
-                    OpenMainMenu()
-                end
-            }
-        }
-    })
-
-    -- Boss Menu zone (separate)
-    exports.ox_target:addBoxZone({
-        coords = Config.Zones.BossMenu.coords,
-        size = Config.Zones.BossMenu.size,
-        rotation = Config.Zones.BossMenu.rotation,
-        debug = Config.Zones.BossMenu.debug,
-        options = {
-            {
-                name = 'concess_boss_menu',
-                icon = Config.Zones.BossMenu.icon,
-                label = Config.Zones.BossMenu.label,
+                name = 'taxi_boss_menu',
+                icon = Config.BossMenuZone.icon,
+                label = Config.BossMenuZone.label,
                 groups = {[Config.JobName] = Config.BossGrade},
                 onSelect = function()
                     OpenBossMenu()
@@ -652,81 +482,6 @@ CreateThread(function()
             }
         }
     })
-
-    -- Garage zone
-    exports.ox_target:addBoxZone({
-        coords = Config.Zones.Garage.coords,
-        size = Config.Zones.Garage.size,
-        rotation = Config.Zones.Garage.rotation,
-        debug = Config.Zones.Garage.debug,
-        options = {
-            {
-                name = 'concess_garage',
-                icon = Config.Zones.Garage.icon,
-                label = Config.Zones.Garage.label,
-                groups = Config.JobName,
-                onSelect = function()
-                    TriggerServerEvent('zcon:getServiceVehicle')
-                end
-            }
-        }
-    })
-
-    -- Unload zone with E key detection
-    CreateThread(function()
-        while true do
-            local ped = PlayerPedId()
-            local coords = GetEntityCoords(ped)
-            local vehicle = GetVehiclePedIsIn(ped, false)
-
-            -- Check if player has job, is in flatbed, has active delivery, and is in zone
-            if HasJob() and HasActiveDelivery() and vehicle ~= 0 then
-                local model = GetEntityModel(vehicle)
-                if model == GetHashKey(Config.ServiceVehicle.model) then
-                    local distance = #(coords - Config.Zones.Unload.coords)
-
-                    if distance < 10.0 then
-                        -- Show help text
-                        lib.showTextUI('[E] Décharger les véhicules', {position = 'right-center'})
-
-                        -- Check for E key press
-                        if IsControlJustReleased(0, 38) then -- E key
-                            lib.hideTextUI()
-                            UnloadVehicles()
-                        end
-                    else
-                        lib.hideTextUI()
-                    end
-                else
-                    lib.hideTextUI()
-                end
-            else
-                lib.hideTextUI()
-            end
-
-            Wait(0)
-        end
-    end)
-
-    -- Citizen catalog zones
-    for i, zone in ipairs(Config.CitizenCatalogZones) do
-        exports.ox_target:addBoxZone({
-            coords = zone.coords,
-            size = zone.size,
-            rotation = zone.rotation,
-            debug = false,
-            options = {
-                {
-                    name = 'catalog_zone_' .. i,
-                    icon = zone.icon,
-                    label = zone.label,
-                    onSelect = function()
-                        OpenCitizenCatalog()
-                    end
-                }
-            }
-        })
-    end
 
     -- Create map blip
     if Config.Blip.enabled then
@@ -741,84 +496,8 @@ CreateThread(function()
     end
 end)
 
--- Open citizen catalog (for everyone)
-function OpenCitizenCatalog()
-    local options = {}
-
-    for _, category in ipairs(Config.Vehicles) do
-        table.insert(options, {
-            title = category.category,
-            description = string.format('%d véhicules disponibles', #category.vehicles),
-            icon = 'folder',
-            onSelect = function()
-                OpenCitizenCategoryVehicles(category)
-            end
-        })
-    end
-
-    lib.registerContext({
-        id = 'citizen_catalog',
-        title = '📖 Catalogue Véhicules',
-        options = options
-    })
-
-    lib.showContext('citizen_catalog')
-end
-
--- Open category vehicles for citizens
-function OpenCitizenCategoryVehicles(category)
-    local options = {}
-
-    for _, vehicle in ipairs(category.vehicles) do
-        local price = vehicle.price or 0
-        table.insert(options, {
-            title = vehicle.name,
-            description = string.format('Prix: $%s', ESX.Math.GroupDigits(price)),
-            icon = 'car',
-            onSelect = function()
-                ShowCitizenVehicleInfo(vehicle)
-            end
-        })
-    end
-
-    lib.registerContext({
-        id = 'citizen_category_vehicles',
-        title = string.format('📖 %s', category.category),
-        menu = 'citizen_catalog',
-        options = options
-    })
-
-    lib.showContext('citizen_category_vehicles')
-end
-
--- Show vehicle info for citizens
-function ShowCitizenVehicleInfo(vehicle)
-    local price = vehicle.price or 0
-    lib.registerContext({
-        id = 'citizen_vehicle_info',
-        title = string.format('🚗 %s', vehicle.name),
-        menu = 'citizen_category_vehicles',
-        options = {
-            {
-                title = '💰 Prix',
-                description = string.format('$%s', ESX.Math.GroupDigits(price)),
-                icon = 'dollar-sign',
-                disabled = true
-            },
-            {
-                title = '📞 Contacter un vendeur',
-                description = 'Demandez à un employé de vous vendre ce véhicule',
-                icon = 'phone',
-                onSelect = function()
-                    lib.notify({
-                        title = 'Information',
-                        description = 'Contactez un employé de la concession pour acheter ce véhicule',
-                        type = 'info'
-                    })
-                end
-            }
-        }
-    })
-
-    lib.showContext('citizen_vehicle_info')
-end
+-- Cleanup on resource stop
+AddEventHandler('onResourceStop', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then return end
+    CancelMission()
+end)

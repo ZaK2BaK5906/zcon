@@ -2,8 +2,8 @@ fx_version 'cerulean'
 game 'gta5'
 
 author 'ZaK2BaK5906'
-description 'ESX Concess Job - Vehicle Dealership with Delivery System'
-version '2.1.0'
+description 'ESX Taxi Job - NPC Missions & Billing System'
+version '1.0.0'
 
 shared_scripts {
     '@es_extended/imports.lua',
@@ -17,9 +17,7 @@ server_scripts {
 }
 
 client_scripts {
-    'client/main.lua',
-    'client/delivery.lua',
-    'client/showroom.lua'
+    'client/main.lua'
 }
 
 lua54 'yes'
