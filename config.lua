@@ -23,7 +23,7 @@ Config.MinGradeToOrder = 0
 Config.Zones = {
     -- Bureau/Tablette - Menu de gestion
     Office = {
-        coords = vector3(1224.78, 2728.12, 38.0),
+        coords = vector3(1922.7627, 3725.1802, 32.5662),
         size = vector3(2.0, 2.0, 2.0),
         rotation = 0.0,
         debug = false,
@@ -33,18 +33,18 @@ Config.Zones = {
 
     -- Garage employé - Sortir véhicule de service
     Garage = {
-        coords = vector3(1220.0, 2725.0, 38.0),
+        coords = vector3(1894.9537, 3714.4873, 32.5113),
         size = vector3(3.0, 3.0, 2.0),
         rotation = 0.0,
         debug = false,
         icon = 'fa-solid fa-warehouse',
         label = 'Garage de service',
-        spawnPoint = vector4(1218.0, 2720.0, 38.0, 180.0)
+        spawnPoint = vector4(1891.5820, 3711.9229, 32.5113, 210.0)
     },
 
     -- Zone de déchargement
     Unload = {
-        coords = vector3(1216.0, 2722.0, 38.0),
+        coords = vector3(1900.2015, 3716.9209, 32.3932),
         size = vector3(5.0, 5.0, 2.0),
         rotation = 0.0,
         debug = false,
@@ -54,7 +54,7 @@ Config.Zones = {
 
     -- Menu Boss (séparé)
     BossMenu = {
-        coords = vector3(1227.0, 2727.0, 38.0),
+        coords = vector3(1925.0, 3727.0, 32.5662),
         size = vector3(2.0, 2.0, 2.0),
         rotation = 0.0,
         debug = false,
@@ -65,31 +65,32 @@ Config.Zones = {
 
 -- Showroom spots (employees can place vehicles here)
 Config.ShowroomSpots = {
-    vector4(1230.0, 2733.0, 38.0, 180.0),
-    vector4(1235.0, 2733.0, 38.0, 180.0),
-    vector4(1240.0, 2733.0, 38.0, 180.0),
-    vector4(1230.0, 2728.0, 38.0, 180.0),
-    vector4(1235.0, 2728.0, 38.0, 180.0)
+    vector4(1917.3323, 3736.0859, 32.5662, 206.2456),
+    vector4(1916.5022, 3712.5427, 32.5662, 26.2196),
+    vector4(1921.7382, 3715.1169, 32.5661, 34.5537),
+    vector4(1909.5616, 3734.7903, 32.5735, 112.2522),
+    vector4(1906.8090, 3723.0435, 32.5697, 25.0360),
+    vector4(1910.3209, 3727.8323, 32.5735, 63.2570)
 }
 
 -- Citizen catalog zones (where citizens can browse vehicles)
 Config.CitizenCatalogZones = {
     {
-        coords = vector3(1227.0, 2735.0, 38.0),
+        coords = vector3(1912.0, 3730.0, 32.5662),
         size = vector3(2.0, 2.0, 2.0),
         rotation = 0.0,
         icon = 'fa-solid fa-book',
         label = 'Consulter le catalogue'
     },
     {
-        coords = vector3(1232.0, 2735.0, 38.0),
+        coords = vector3(1914.0, 3720.0, 32.5662),
         size = vector3(2.0, 2.0, 2.0),
         rotation = 0.0,
         icon = 'fa-solid fa-book',
         label = 'Consulter le catalogue'
     },
     {
-        coords = vector3(1237.0, 2735.0, 38.0),
+        coords = vector3(1920.0, 3732.0, 32.5662),
         size = vector3(2.0, 2.0, 2.0),
         rotation = 0.0,
         icon = 'fa-solid fa-book',
@@ -99,13 +100,8 @@ Config.CitizenCatalogZones = {
 
 -- Delivery locations (random points for vehicle pickup)
 Config.DeliveryLocations = {
-    vector4(2542.23, 2588.76, 37.94, 90.0),
-    vector4(1737.07, 3309.62, 41.22, 200.0),
-    vector4(-3088.08, 3384.84, 13.17, 330.0),
-    vector4(-1109.73, -2007.25, 13.16, 140.0),
-    vector4(1213.06, -3152.55, 5.57, 270.0),
-    vector4(710.31, -1088.85, 22.36, 0.0),
-    vector4(-1531.88, -412.03, 35.66, 140.0)
+    vector4(100.2705, 6376.7852, 31.2258, 117.5896),
+    vector4(2536.1978, 2614.6311, 37.9448, 130.8772),
 }
 
 -- Service vehicle
@@ -271,9 +267,9 @@ Config.UseOxLib = true  -- Set to false to use ESX notifications
 -- Map blip settings
 Config.Blip = {
     enabled = true,
-    coords = vector3(1224.78, 2728.12, 38.0),  -- Same as office location
+    coords = vector3(1922.7627, 3725.1802, 32.5662),  -- Same as office location
     sprite = 326,  -- Car dealership icon
     color = 3,     -- Blue
-    scale = 0.5,
+    scale = 0.8,
     label = 'Concess Auto'
 }
