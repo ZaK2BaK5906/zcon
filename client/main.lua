@@ -80,6 +80,14 @@ function OpenMainMenu()
             onSelect = function()
                 OpenSellVehicleMenu()
             end
+        },
+        {
+            title = '🏢 Gestion Showroom',
+            description = 'Gérer les véhicules d\'exposition',
+            icon = 'warehouse',
+            onSelect = function()
+                OpenShowroomMenu()
+            end
         }
     }
 
@@ -387,10 +395,11 @@ function OpenSellVehicleMenu()
 
         local options = {}
         for _, item in ipairs(stock) do
-            if item.quantity > 0 then
+            if item.quantity and item.quantity > 0 then
+                local price = item.price or 0
                 table.insert(options, {
-                    title = item.vehicle_name,
-                    description = string.format('Stock: %d | Prix achat: $%s', item.quantity, ESX.Math.GroupDigits(item.price)),
+                    title = item.vehicle_name or 'Véhicule',
+                    description = string.format('Stock: %d | Prix achat: $%s', item.quantity, ESX.Math.GroupDigits(price)),
                     icon = 'car',
                     onSelect = function()
                         SellVehicleToPlayer(item)
@@ -637,6 +646,26 @@ CreateThread(function()
         end
     end)
 
+    -- Citizen catalog zones
+    for i, zone in ipairs(Config.CitizenCatalogZones) do
+        exports.ox_target:addBoxZone({
+            coords = zone.coords,
+            size = zone.size,
+            rotation = zone.rotation,
+            debug = false,
+            options = {
+                {
+                    name = 'catalog_zone_' .. i,
+                    icon = zone.icon,
+                    label = zone.label,
+                    onSelect = function()
+                        OpenCitizenCatalog()
+                    end
+                }
+            }
+        })
+    end
+
     -- Create map blip
     if Config.Blip.enabled then
         local blip = AddBlipForCoord(Config.Blip.coords.x, Config.Blip.coords.y, Config.Blip.coords.z)
@@ -649,3 +678,85 @@ CreateThread(function()
         EndTextCommandSetBlipName(blip)
     end
 end)
+
+-- Open citizen catalog (for everyone)
+function OpenCitizenCatalog()
+    local options = {}
+
+    for _, category in ipairs(Config.Vehicles) do
+        table.insert(options, {
+            title = category.category,
+            description = string.format('%d véhicules disponibles', #category.vehicles),
+            icon = 'folder',
+            onSelect = function()
+                OpenCitizenCategoryVehicles(category)
+            end
+        })
+    end
+
+    lib.registerContext({
+        id = 'citizen_catalog',
+        title = '📖 Catalogue Véhicules',
+        options = options
+    })
+
+    lib.showContext('citizen_catalog')
+end
+
+-- Open category vehicles for citizens
+function OpenCitizenCategoryVehicles(category)
+    local options = {}
+
+    for _, vehicle in ipairs(category.vehicles) do
+        local price = vehicle.price or 0
+        table.insert(options, {
+            title = vehicle.name,
+            description = string.format('Prix: $%s', ESX.Math.GroupDigits(price)),
+            icon = 'car',
+            onSelect = function()
+                ShowCitizenVehicleInfo(vehicle)
+            end
+        })
+    end
+
+    lib.registerContext({
+        id = 'citizen_category_vehicles',
+        title = string.format('📖 %s', category.category),
+        menu = 'citizen_catalog',
+        options = options
+    })
+
+    lib.showContext('citizen_category_vehicles')
+end
+
+-- Show vehicle info for citizens
+function ShowCitizenVehicleInfo(vehicle)
+    local price = vehicle.price or 0
+    lib.registerContext({
+        id = 'citizen_vehicle_info',
+        title = string.format('🚗 %s', vehicle.name),
+        menu = 'citizen_category_vehicles',
+        options = {
+            {
+                title = '💰 Prix',
+                description = string.format('$%s', ESX.Math.GroupDigits(price)),
+                icon = 'dollar-sign',
+                disabled = true
+            },
+            {
+                title = '📞 Contacter un vendeur',
+                description = 'Demandez à un employé de vous vendre ce véhicule',
+                icon = 'phone',
+                onSelect = function()
+                    lib.notify({
+                        title = 'Information',
+                        description = 'Contactez un employé de la concession pour acheter ce véhicule',
+                        type = 'info'
+                    })
+                end
+            }
+        }
+    })
+
+    lib.showContext('citizen_vehicle_info')
+end

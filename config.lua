@@ -53,6 +53,40 @@ Config.Zones = {
     }
 }
 
+-- Showroom spots (employees can place vehicles here)
+Config.ShowroomSpots = {
+    vector4(1230.0, 2733.0, 38.0, 180.0),
+    vector4(1235.0, 2733.0, 38.0, 180.0),
+    vector4(1240.0, 2733.0, 38.0, 180.0),
+    vector4(1230.0, 2728.0, 38.0, 180.0),
+    vector4(1235.0, 2728.0, 38.0, 180.0)
+}
+
+-- Citizen catalog zones (where citizens can browse vehicles)
+Config.CitizenCatalogZones = {
+    {
+        coords = vector3(1227.0, 2735.0, 38.0),
+        size = vector3(2.0, 2.0, 2.0),
+        rotation = 0.0,
+        icon = 'fa-solid fa-book',
+        label = 'Consulter le catalogue'
+    },
+    {
+        coords = vector3(1232.0, 2735.0, 38.0),
+        size = vector3(2.0, 2.0, 2.0),
+        rotation = 0.0,
+        icon = 'fa-solid fa-book',
+        label = 'Consulter le catalogue'
+    },
+    {
+        coords = vector3(1237.0, 2735.0, 38.0),
+        size = vector3(2.0, 2.0, 2.0),
+        rotation = 0.0,
+        icon = 'fa-solid fa-book',
+        label = 'Consulter le catalogue'
+    }
+}
+
 -- Delivery locations (random points for vehicle pickup)
 Config.DeliveryLocations = {
     vector4(2542.23, 2588.76, 37.94, 90.0),

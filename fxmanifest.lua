@@ -18,7 +18,8 @@ server_scripts {
 
 client_scripts {
     'client/main.lua',
-    'client/delivery.lua'
+    'client/delivery.lua',
+    'client/showroom.lua'
 }
 
 lua54 'yes'
