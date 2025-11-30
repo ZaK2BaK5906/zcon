@@ -19,11 +19,11 @@ Config.BossGrade = 2
 -- Minimum grade for ordering
 Config.MinGradeToOrder = 0
 
--- Zones
+-- Zones (Sandy Shores Cardealer)
 Config.Zones = {
     -- Bureau/Tablette - Menu de gestion
     Office = {
-        coords = vector3(-33.81, -1102.57, 26.42),
+        coords = vector3(1224.78, 2728.12, 38.0),
         size = vector3(2.0, 2.0, 2.0),
         rotation = 0.0,
         debug = false,
@@ -33,18 +33,18 @@ Config.Zones = {
 
     -- Garage employé - Sortir véhicule de service
     Garage = {
-        coords = vector3(-22.45, -1098.84, 26.42),
+        coords = vector3(1220.0, 2725.0, 38.0),
         size = vector3(3.0, 3.0, 2.0),
         rotation = 0.0,
         debug = false,
         icon = 'fa-solid fa-warehouse',
         label = 'Garage de service',
-        spawnPoint = vector4(-18.0, -1094.0, 26.0, 160.0)
+        spawnPoint = vector4(1218.0, 2720.0, 38.0, 180.0)
     },
 
     -- Zone de déchargement
     Unload = {
-        coords = vector3(-43.58, -1097.37, 26.42),
+        coords = vector3(1216.0, 2722.0, 38.0),
         size = vector3(5.0, 5.0, 2.0),
         rotation = 0.0,
         debug = false,
@@ -227,9 +227,9 @@ Config.UseOxLib = true  -- Set to false to use ESX notifications
 -- Map blip settings
 Config.Blip = {
     enabled = true,
-    coords = vector3(-33.81, -1102.57, 26.42),  -- Same as office location
+    coords = vector3(1224.78, 2728.12, 38.0),  -- Same as office location
     sprite = 326,  -- Car dealership icon
     color = 3,     -- Blue
-    scale = 0.8,
+    scale = 0.5,
     label = 'Concess Auto'
 }
