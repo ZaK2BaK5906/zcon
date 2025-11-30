@@ -480,4 +480,48 @@ RegisterNetEvent('zcon:sellVehicle', function(targetId, vehicleModel, vehicleNam
     end)
 end)
 
+-- Recruit employee
+RegisterNetEvent('zcon:recruitEmployee', function(targetId, grade)
+    local source = source
+    local xPlayer = ESX.GetPlayerFromId(source)
+    local xTarget = ESX.GetPlayerFromId(targetId)
+
+    -- Validation
+    if not xPlayer or xPlayer.job.name ~= Config.JobName or xPlayer.job.grade < Config.BossGrade then
+        Notify(source, 'Vous n\'avez pas accès à cette action', 'error')
+        return
+    end
+
+    if not xTarget then
+        Notify(source, 'Joueur introuvable', 'error')
+        return
+    end
+
+    grade = tonumber(grade)
+    if not grade or grade < 0 or grade > 2 then
+        Notify(source, 'Grade invalide', 'error')
+        return
+    end
+
+    -- Set job
+    xTarget.setJob(Config.JobName, grade)
+
+    -- Notifications
+    local gradeNames = {
+        [0] = 'Employé',
+        [1] = 'Gérant',
+        [2] = 'Boss'
+    }
+
+    Notify(source, string.format('Vous avez recruté %s en tant que %s', xTarget.getName(), gradeNames[grade]), 'success')
+    Notify(targetId, string.format('Vous avez été recruté à la concession en tant que %s', gradeNames[grade]), 'success')
+
+    -- Log
+    print(string.format('[ZCon] %s recruited %s as %s (grade %d)',
+        xPlayer.getName(),
+        xTarget.getName(),
+        gradeNames[grade],
+        grade))
+end)
+
 print('^2[ZCon]^7 Concess job loaded successfully')

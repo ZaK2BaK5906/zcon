@@ -50,6 +50,16 @@ Config.Zones = {
         debug = false,
         icon = 'fa-solid fa-dolly',
         label = 'Zone de déchargement'
+    },
+
+    -- Menu Boss (séparé)
+    BossMenu = {
+        coords = vector3(1227.0, 2727.0, 38.0),
+        size = vector3(2.0, 2.0, 2.0),
+        rotation = 0.0,
+        debug = false,
+        icon = 'fa-solid fa-briefcase',
+        label = 'Menu Patron'
     }
 }
 

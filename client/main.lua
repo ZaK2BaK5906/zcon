@@ -91,18 +91,6 @@ function OpenMainMenu()
         }
     }
 
-    -- Boss menu
-    if IsBoss() then
-        table.insert(options, {
-            title = '💰 Menu Patron',
-            description = 'Gestion de la société',
-            icon = 'briefcase',
-            onSelect = function()
-                OpenBossMenu()
-            end
-        })
-    end
-
     lib.registerContext({
         id = 'concess_main',
         title = '🏢 Concessionnaire',
@@ -301,6 +289,15 @@ end
 
 -- Boss Menu
 function OpenBossMenu()
+    if not IsBoss() then
+        lib.notify({
+            title = 'Erreur',
+            description = 'Vous n\'êtes pas patron',
+            type = 'error'
+        })
+        return
+    end
+
     ESX.TriggerServerCallback('zcon:getSocietyMoney', function(money)
         local options = {
             {
@@ -324,13 +321,20 @@ function OpenBossMenu()
                 onSelect = function()
                     DepositMoney()
                 end
+            },
+            {
+                title = '👔 Recruter un employé',
+                description = 'Recruter un joueur dans la société',
+                icon = 'user-plus',
+                onSelect = function()
+                    RecruitEmployee()
+                end
             }
         }
 
         lib.registerContext({
             id = 'concess_boss',
             title = '💰 Menu Patron',
-            menu = 'concess_main',
             options = options
         })
 
@@ -375,6 +379,42 @@ function DepositMoney()
         local amount = tonumber(input[1])
         if amount and amount > 0 then
             TriggerServerEvent('zcon:depositMoney', amount)
+        end
+    end
+
+    OpenBossMenu()
+end
+
+-- Recruit Employee
+function RecruitEmployee()
+    local input = lib.inputDialog('Recruter un employé', {
+        {
+            type = 'number',
+            label = 'ID du joueur',
+            description = 'Entrez l\'ID du joueur à recruter',
+            required = true,
+            min = 1
+        },
+        {
+            type = 'select',
+            label = 'Grade',
+            description = 'Choisir le grade de l\'employé',
+            required = true,
+            options = {
+                {value = 0, label = 'Employé'},
+                {value = 1, label = 'Gérant'},
+                {value = 2, label = 'Boss'}
+            },
+            default = 0
+        }
+    })
+
+    if input then
+        local targetId = tonumber(input[1])
+        local grade = tonumber(input[2])
+
+        if targetId and grade then
+            TriggerServerEvent('zcon:recruitEmployee', targetId, grade)
         end
     end
 
@@ -589,6 +629,25 @@ CreateThread(function()
                 groups = Config.JobName,
                 onSelect = function()
                     OpenMainMenu()
+                end
+            }
+        }
+    })
+
+    -- Boss Menu zone (separate)
+    exports.ox_target:addBoxZone({
+        coords = Config.Zones.BossMenu.coords,
+        size = Config.Zones.BossMenu.size,
+        rotation = Config.Zones.BossMenu.rotation,
+        debug = Config.Zones.BossMenu.debug,
+        options = {
+            {
+                name = 'concess_boss_menu',
+                icon = Config.Zones.BossMenu.icon,
+                label = Config.Zones.BossMenu.label,
+                groups = {[Config.JobName] = Config.BossGrade},
+                onSelect = function()
+                    OpenBossMenu()
                 end
             }
         }
