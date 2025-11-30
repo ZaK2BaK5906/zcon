@@ -106,12 +106,18 @@ function SetupPickupZone()
 
     local location = activeDelivery.location
 
+    print('[ZCon] Setting up pickup zone at', location.x, location.y, location.z)
+
+    -- Remove any existing pickup zone first
+    exports.ox_target:removeZone('concess_pickup_zone')
+
     -- Add temporary target zone
     exports.ox_target:addBoxZone({
         coords = vector3(location.x, location.y, location.z),
-        size = vector3(5.0, 5.0, 3.0),
-        rotation = location.w,
-        debug = false,
+        size = vector3(10.0, 10.0, 4.0),
+        rotation = location.w or 0.0,
+        debug = true,  -- Show the zone for debugging
+        name = 'concess_pickup_zone',
         options = {
             {
                 name = 'concess_pickup',
@@ -120,17 +126,37 @@ function SetupPickupZone()
                 canInteract = function()
                     local ped = PlayerPedId()
                     local vehicle = GetVehiclePedIsIn(ped, false)
-                    if vehicle == 0 then return false end
 
-                    local model = GetEntityModel(vehicle)
-                    return model == GetHashKey(Config.ServiceVehicle.model)
+                    -- Allow interaction if in flatbed
+                    if vehicle ~= 0 then
+                        local model = GetEntityModel(vehicle)
+                        if model == GetHashKey(Config.ServiceVehicle.model) then
+                            return true
+                        end
+                    end
+
+                    -- Also allow if near a flatbed (within 5 meters)
+                    local playerCoords = GetEntityCoords(ped)
+                    local nearbyVehicle = GetClosestVehicle(playerCoords.x, playerCoords.y, playerCoords.z, 5.0, 0, 71)
+
+                    if nearbyVehicle ~= 0 then
+                        local model = GetEntityModel(nearbyVehicle)
+                        if model == GetHashKey(Config.ServiceVehicle.model) then
+                            return true
+                        end
+                    end
+
+                    return false
                 end,
                 onSelect = function()
+                    print('[ZCon] Loading vehicles...')
                     LoadVehicles()
                 end
             }
         }
     })
+
+    print('[ZCon] Pickup zone created successfully')
 end
 
 -- Load vehicles onto flatbed
