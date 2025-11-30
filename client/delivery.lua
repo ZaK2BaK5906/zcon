@@ -429,11 +429,11 @@ function CleanupDelivery()
     isAtUnloadPoint = false
 end
 
--- Exports for ox_target
-exports('HasActiveDelivery', function()
+-- Global function to check if there's an active delivery
+function HasActiveDelivery()
     return activeDelivery ~= nil and activeDelivery.stage == 'goto_unload'
-end)
+end
 
-exports('UnloadVehicles', function()
-    UnloadVehicles()
-end)
+-- Exports
+exports('HasActiveDelivery', HasActiveDelivery)
+exports('UnloadVehicles', UnloadVehicles)

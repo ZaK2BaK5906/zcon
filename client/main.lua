@@ -609,7 +609,7 @@ CreateThread(function()
             local vehicle = GetVehiclePedIsIn(ped, false)
 
             -- Check if player has job, is in flatbed, has active delivery, and is in zone
-            if HasJob() and exports.zcon:HasActiveDelivery() and vehicle ~= 0 then
+            if HasJob() and HasActiveDelivery() and vehicle ~= 0 then
                 local model = GetEntityModel(vehicle)
                 if model == GetHashKey(Config.ServiceVehicle.model) then
                     local distance = #(coords - Config.Zones.Unload.coords)
@@ -621,7 +621,7 @@ CreateThread(function()
                         -- Check for E key press
                         if IsControlJustReleased(0, 38) then -- E key
                             lib.hideTextUI()
-                            exports.zcon:UnloadVehicles()
+                            UnloadVehicles()
                         end
                     else
                         lib.hideTextUI()
