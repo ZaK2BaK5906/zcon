@@ -19,13 +19,13 @@ AddEventHandler('esx:setJob', function(job)
     PlayerData.job = job
 end)
 
--- Check if player has concess job
-local function HasJob()
+-- Check if player has concess job (global function)
+function HasJob()
     return PlayerData.job and PlayerData.job.name == Config.JobName
 end
 
 -- Get player grade
-local function GetGrade()
+function GetGrade()
     if HasJob() then
         return PlayerData.job.grade
     end
@@ -33,7 +33,7 @@ local function GetGrade()
 end
 
 -- Check if player is boss
-local function IsBoss()
+function IsBoss()
     return GetGrade() >= Config.BossGrade
 end
 
@@ -430,8 +430,11 @@ end
 
 -- Sell Vehicle to Player
 function SellVehicleToPlayer(vehicle)
+    local vehiclePrice = vehicle.price or 0
+    local suggestedPrice = math.floor(vehiclePrice * Config.SellPriceMultiplier)
+
     -- Step 1: Get player ID
-    local input = lib.inputDialog('Vendre ' .. vehicle.vehicle_name, {
+    local input = lib.inputDialog('Vendre ' .. (vehicle.vehicle_name or 'Véhicule'), {
         {
             type = 'number',
             label = 'ID du joueur',
@@ -442,7 +445,7 @@ function SellVehicleToPlayer(vehicle)
         {
             type = 'number',
             label = 'Prix de vente',
-            description = string.format('Prix conseillé: $%s', ESX.Math.GroupDigits(math.floor(vehicle.price * Config.SellPriceMultiplier))),
+            description = string.format('Prix conseillé: $%s', ESX.Math.GroupDigits(suggestedPrice)),
             required = true,
             min = 1
         }
