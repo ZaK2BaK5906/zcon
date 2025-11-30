@@ -28,5 +28,7 @@ dependencies {
     'es_extended',
     'ox_lib',
     'ox_target',
-    'oxmysql'
+    'oxmysql',
+    'qs-advancedgarages',
+    'qs-vehiclekeys'
 }

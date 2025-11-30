@@ -569,7 +569,7 @@ RegisterNetEvent('zcon:spawnServiceVehicle', function()
 end)
 
 -- Spawn purchased vehicle and give keys
-RegisterNetEvent('zcon:spawnPurchasedVehicle', function(vehicleModel, vehicleName, price)
+RegisterNetEvent('zcon:spawnPurchasedVehicle', function(vehicleModel, vehicleName, price, customPlate)
     local playerPed = PlayerPedId()
     local coords = GetEntityCoords(playerPed)
     local heading = GetEntityHeading(playerPed)
@@ -584,6 +584,11 @@ RegisterNetEvent('zcon:spawnPurchasedVehicle', function(vehicleModel, vehicleNam
 
     ESX.Game.SpawnVehicle(vehicleModel, spawnCoords, heading, function(vehicle)
         if DoesEntityExist(vehicle) then
+            -- Set custom plate if provided
+            if customPlate then
+                SetVehicleNumberPlateText(vehicle, customPlate)
+            end
+
             -- Get plate and model for keys
             local plate = GetVehicleNumberPlateText(vehicle)
             local model = GetDisplayNameFromVehicleModel(GetEntityModel(vehicle))

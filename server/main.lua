@@ -27,6 +27,19 @@ local function Notify(source, message, type)
     })
 end
 
+-- Generate random plate
+function GenerateRandomPlate()
+    local charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    local plate = ''
+
+    for i = 1, 8 do
+        local rand = math.random(1, #charset)
+        plate = plate .. charset:sub(rand, rand)
+    end
+
+    return plate
+end
+
 -- Get society account
 local function GetSocietyAccount(cb)
     MySQL.query('SELECT * FROM addon_account_data WHERE account_name = ?', {Config.SocietyName}, function(result)
@@ -445,8 +458,23 @@ RegisterNetEvent('zcon:sellVehicle', function(targetId, vehicleModel, vehicleNam
             -- Update stock
             MySQL.update('UPDATE concess_stock SET quantity = quantity - 1 WHERE vehicle_model = ?', {vehicleModel}, function(affectedRows)
                 if affectedRows > 0 then
-                    -- Spawn vehicle for buyer
-                    TriggerClientEvent('zcon:spawnPurchasedVehicle', targetId, vehicleModel, vehicleName, price)
+                    -- Generate random plate
+                    local plate = GenerateRandomPlate()
+
+                    -- Give vehicle to buyer using qs-advancedgarages
+                    local success = pcall(function()
+                        exports['qs-advancedgarages']:GiveVehicle(source, {targetId, vehicleModel, plate}, 'vehicle')
+                    end)
+
+                    if not success then
+                        -- Fallback: spawn vehicle client-side if export fails
+                        TriggerClientEvent('zcon:spawnPurchasedVehicle', targetId, vehicleModel, vehicleName, price, plate)
+                    end
+
+                    -- Give keys using qs-vehiclekeys
+                    pcall(function()
+                        exports['qs-vehiclekeys']:GiveKeys(plate, vehicleModel, true)
+                    end)
 
                     -- Notifications
                     Notify(source, string.format('Véhicule vendu à %s pour $%s', xTarget.getName(), ESX.Math.GroupDigits(price)), 'success')
@@ -459,12 +487,13 @@ RegisterNetEvent('zcon:sellVehicle', function(targetId, vehicleModel, vehicleNam
                     UpdateSocietyMoneyForAll()
 
                     -- Log
-                    print(string.format('[ZCon] %s sold %s to %s for $%s (%s)',
+                    print(string.format('[ZCon] %s sold %s to %s for $%s (%s) - Plate: %s',
                         xPlayer.getName(),
                         vehicleName,
                         xTarget.getName(),
                         price,
-                        paymentMethod))
+                        paymentMethod,
+                        plate))
                 else
                     -- Refund if stock update fails
                     if paymentMethod == 'bank' then
