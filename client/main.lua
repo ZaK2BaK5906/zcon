@@ -601,27 +601,41 @@ CreateThread(function()
         }
     })
 
-    -- Unload zone
-    exports.ox_target:addBoxZone({
-        coords = Config.Zones.Unload.coords,
-        size = Config.Zones.Unload.size,
-        rotation = Config.Zones.Unload.rotation,
-        debug = Config.Zones.Unload.debug,
-        options = {
-            {
-                name = 'concess_unload',
-                icon = Config.Zones.Unload.icon,
-                label = Config.Zones.Unload.label,
-                groups = Config.JobName,
-                canInteract = function()
-                    return exports.zcon:HasActiveDelivery()
-                end,
-                onSelect = function()
-                    exports.zcon:UnloadVehicles()
+    -- Unload zone with E key detection
+    CreateThread(function()
+        while true do
+            local ped = PlayerPedId()
+            local coords = GetEntityCoords(ped)
+            local vehicle = GetVehiclePedIsIn(ped, false)
+
+            -- Check if player has job, is in flatbed, has active delivery, and is in zone
+            if HasJob() and exports.zcon:HasActiveDelivery() and vehicle ~= 0 then
+                local model = GetEntityModel(vehicle)
+                if model == GetHashKey(Config.ServiceVehicle.model) then
+                    local distance = #(coords - Config.Zones.Unload.coords)
+
+                    if distance < 10.0 then
+                        -- Show help text
+                        lib.showTextUI('[E] Décharger les véhicules', {position = 'right-center'})
+
+                        -- Check for E key press
+                        if IsControlJustReleased(0, 38) then -- E key
+                            lib.hideTextUI()
+                            exports.zcon:UnloadVehicles()
+                        end
+                    else
+                        lib.hideTextUI()
+                    end
+                else
+                    lib.hideTextUI()
                 end
-            }
-        }
-    })
+            else
+                lib.hideTextUI()
+            end
+
+            Wait(0)
+        end
+    end)
 
     -- Create map blip
     if Config.Blip.enabled then
